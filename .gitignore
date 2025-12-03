@@ -13,7 +13,6 @@ captures/
 .externalNativeBuild/
 .cxx/
 *.aab
-*.apk
 output-metadata.json
 
 # IntelliJ
@@ -32,3 +31,32 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# Flutter/Dart
+.dart_tool/
+.packages
+.pub/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock
+
+# VS Code
+.vscode/
+
+# macOS
+.DS_Store
+
+# Windows
+*.exe
+Thumbs.db
+
+# Build outputs
+**/build/
+
+# Downloaded Frida gadgets (can be re-downloaded)
+frida-gadget*.so
+*.xz
+
+# Patched APKs (user-generated)
+*_patched.apk
+*_signed.apk
