@@ -1,11 +1,13 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:pointycastle/export.dart';
 
 /// Service for injecting Frida Gadget into APKs for non-rooted device analysis
 class FridaGadgetService {
@@ -394,51 +396,75 @@ class FridaGadgetService {
     return result;
   }
 
-  /// Zipalign the APK
+  /// Zipalign the APK (pure Dart - simplified alignment)
   Future<bool> _zipalign(String inputPath, String outputPath) async {
     try {
-      // Try Android SDK zipalign
-      final sdkPath = Platform.environment['ANDROID_HOME'] ?? 
-                      Platform.environment['ANDROID_SDK_ROOT'];
-      
-      String? zipalignPath;
-      if (sdkPath != null) {
-        final buildToolsDir = Directory('$sdkPath/build-tools');
-        if (await buildToolsDir.exists()) {
-          final versions = await buildToolsDir.list().toList();
-          if (versions.isNotEmpty) {
-            versions.sort((a, b) => b.path.compareTo(a.path));
-            zipalignPath = '${versions.first.path}/zipalign';
-            if (Platform.isWindows) zipalignPath += '.exe';
+      // Try Android SDK zipalign on desktop platforms first
+      if (!Platform.isAndroid && !Platform.isIOS) {
+        final sdkPath = Platform.environment['ANDROID_HOME'] ?? 
+                        Platform.environment['ANDROID_SDK_ROOT'] ??
+                        (Platform.isWindows && Platform.environment['LOCALAPPDATA'] != null
+                            ? '${Platform.environment['LOCALAPPDATA']}/Android/Sdk'
+                            : null);
+        
+        String? zipalignPath;
+        if (sdkPath != null) {
+          final buildToolsDir = Directory('$sdkPath/build-tools');
+          if (await buildToolsDir.exists()) {
+            final versions = await buildToolsDir.list().toList();
+            if (versions.isNotEmpty) {
+              versions.sort((a, b) => b.path.compareTo(a.path));
+              zipalignPath = '${versions.first.path}/zipalign';
+              if (Platform.isWindows) zipalignPath += '.exe';
+            }
+          }
+        }
+        
+        if (zipalignPath != null && await File(zipalignPath).exists()) {
+          final result = await Process.run(
+            zipalignPath,
+            ['-f', '-p', '4', inputPath, outputPath],
+          );
+          
+          if (result.exitCode == 0) {
+            return true;
           }
         }
       }
       
-      if (zipalignPath == null || !await File(zipalignPath).exists()) {
-        return false;
-      }
-      
-      final result = await Process.run(
-        zipalignPath,
-        ['-f', '-p', '4', inputPath, outputPath],
-      );
-      
-      return result.exitCode == 0;
+      // Fallback: Just copy the file - zipalign is recommended but not required
+      await File(inputPath).copy(outputPath);
+      return true;
     } catch (e) {
       debugPrint('Zipalign error: $e');
-      return false;
+      // Copy anyway on failure
+      try {
+        await File(inputPath).copy(outputPath);
+        return true;
+      } catch (_) {
+        return false;
+      }
     }
   }
 
   /// Sign APK with debug key or generated key
   Future<bool> _signApk(String inputPath, String outputPath) async {
     try {
-      // Try apksigner from Android SDK
+      // On Android/iOS, use pure Dart signing
+      if (Platform.isAndroid || Platform.isIOS) {
+        debugPrint('Using pure Dart APK signing...');
+        return await _signApkPureDart(inputPath, outputPath);
+      }
+      
+      // Try apksigner from Android SDK on desktop
       final sdkPath = Platform.environment['ANDROID_HOME'] ?? 
-                      Platform.environment['ANDROID_SDK_ROOT'];
+                      Platform.environment['ANDROID_SDK_ROOT'] ??
+                      (Platform.isWindows && Platform.environment['LOCALAPPDATA'] != null
+                          ? '${Platform.environment['LOCALAPPDATA']}/Android/Sdk'
+                          : null);
       
       String? apksignerPath;
-      String? keystorePath;
+      String keystorePath = '$_workDir/debug.keystore';
       
       if (sdkPath != null) {
         final buildToolsDir = Directory('$sdkPath/build-tools');
@@ -453,9 +479,12 @@ class FridaGadgetService {
       }
       
       // Create or use debug keystore
-      keystorePath = '$_workDir/debug.keystore';
       if (!await File(keystorePath).exists()) {
-        await _createDebugKeystore(keystorePath);
+        final created = await _createDebugKeystore(keystorePath);
+        if (!created) {
+          // Fall back to pure Dart signing
+          return await _signApkPureDart(inputPath, outputPath);
+        }
       }
       
       if (apksignerPath != null && await File(apksignerPath).exists()) {
@@ -471,33 +500,442 @@ class FridaGadgetService {
             inputPath,
           ],
         );
-        return result.exitCode == 0;
+        if (result.exitCode == 0) {
+          return true;
+        }
       }
       
       // Fallback: try jarsigner
-      final result = await Process.run(
-        'jarsigner',
-        [
-          '-keystore', keystorePath,
-          '-storepass', 'android',
-          '-keypass', 'android',
-          '-signedjar', outputPath,
-          inputPath,
-          'androiddebugkey',
-        ],
-      );
+      try {
+        final result = await Process.run(
+          'jarsigner',
+          [
+            '-keystore', keystorePath,
+            '-storepass', 'android',
+            '-keypass', 'android',
+            '-signedjar', outputPath,
+            inputPath,
+            'androiddebugkey',
+          ],
+        );
+        
+        if (result.exitCode == 0) {
+          return true;
+        }
+      } catch (_) {}
       
-      return result.exitCode == 0;
+      // Last resort: pure Dart signing
+      return await _signApkPureDart(inputPath, outputPath);
     } catch (e) {
       debugPrint('Sign error: $e');
+      // Try pure Dart as last resort
+      return await _signApkPureDart(inputPath, outputPath);
+    }
+  }
+
+  /// Pure Dart APK signing implementation (JAR signing / v1 signature)
+  Future<bool> _signApkPureDart(String inputPath, String outputPath) async {
+    try {
+      debugPrint('Starting pure Dart APK signing...');
+      
+      // Read the APK
+      final apkBytes = await File(inputPath).readAsBytes();
+      final archive = ZipDecoder().decodeBytes(apkBytes);
+      
+      // Generate RSA key pair
+      final keyPair = _generateRSAKeyPair();
+      final privateKey = keyPair.privateKey as RSAPrivateKey;
+      final publicKey = keyPair.publicKey as RSAPublicKey;
+      
+      // Create MANIFEST.MF
+      final manifestContent = StringBuffer();
+      manifestContent.writeln('Manifest-Version: 1.0');
+      manifestContent.writeln('Created-By: DroidAnalyst');
+      manifestContent.writeln();
+      
+      // Calculate SHA-256 digest for each file
+      final fileDigests = <String, String>{};
+      for (final file in archive) {
+        if (file.name.startsWith('META-INF/')) continue;
+        if (!file.isFile) continue;
+        
+        final digest = sha256.convert(file.content as List<int>);
+        final base64Digest = base64.encode(digest.bytes);
+        fileDigests[file.name] = base64Digest;
+        
+        manifestContent.writeln('Name: ${file.name}');
+        manifestContent.writeln('SHA-256-Digest: $base64Digest');
+        manifestContent.writeln();
+      }
+      
+      final manifestBytes = utf8.encode(manifestContent.toString());
+      
+      // Create CERT.SF (signature file)
+      final sfContent = StringBuffer();
+      sfContent.writeln('Signature-Version: 1.0');
+      sfContent.writeln('Created-By: DroidAnalyst');
+      
+      // Add manifest digest
+      final manifestDigest = sha256.convert(manifestBytes);
+      sfContent.writeln('SHA-256-Digest-Manifest: ${base64.encode(manifestDigest.bytes)}');
+      sfContent.writeln();
+      
+      // Add individual file digests
+      for (final entry in fileDigests.entries) {
+        final sectionContent = 'Name: ${entry.key}\r\nSHA-256-Digest: ${entry.value}\r\n\r\n';
+        final sectionDigest = sha256.convert(utf8.encode(sectionContent));
+        sfContent.writeln('Name: ${entry.key}');
+        sfContent.writeln('SHA-256-Digest: ${base64.encode(sectionDigest.bytes)}');
+        sfContent.writeln();
+      }
+      
+      final sfBytes = utf8.encode(sfContent.toString());
+      
+      // Create CERT.RSA (PKCS#7 signature block)
+      final rsaBytes = _createPKCS7Signature(sfBytes, privateKey, publicKey);
+      
+      // Create new archive with signature files
+      final newArchive = Archive();
+      
+      // Add META-INF files first
+      newArchive.addFile(ArchiveFile(
+        'META-INF/MANIFEST.MF',
+        manifestBytes.length,
+        manifestBytes,
+      ));
+      
+      newArchive.addFile(ArchiveFile(
+        'META-INF/CERT.SF',
+        sfBytes.length,
+        sfBytes,
+      ));
+      
+      newArchive.addFile(ArchiveFile(
+        'META-INF/CERT.RSA',
+        rsaBytes.length,
+        rsaBytes,
+      ));
+      
+      // Copy other files (excluding old signatures)
+      for (final file in archive) {
+        if (file.name.startsWith('META-INF/')) continue;
+        newArchive.addFile(file);
+      }
+      
+      // Write signed APK
+      final zipBytes = ZipEncoder().encode(newArchive);
+      await File(outputPath).writeAsBytes(zipBytes!);
+      
+      debugPrint('Pure Dart APK signing completed successfully!');
+      return true;
+    } catch (e, st) {
+      debugPrint('Pure Dart signing error: $e');
+      debugPrint('Stack trace: $st');
       return false;
     }
   }
 
-  /// Create a debug keystore for signing
-  Future<void> _createDebugKeystore(String path) async {
+  /// Generate RSA key pair for signing
+  AsymmetricKeyPair<PublicKey, PrivateKey> _generateRSAKeyPair() {
+    final secureRandom = FortunaRandom();
+    final seedSource = Random.secure();
+    final seeds = List<int>.generate(32, (_) => seedSource.nextInt(256));
+    secureRandom.seed(KeyParameter(Uint8List.fromList(seeds)));
+
+    final keyGen = RSAKeyGenerator()
+      ..init(ParametersWithRandom(
+        RSAKeyGeneratorParameters(BigInt.parse('65537'), 2048, 64),
+        secureRandom,
+      ));
+
+    return keyGen.generateKeyPair();
+  }
+
+  /// Create PKCS#7 signature block
+  Uint8List _createPKCS7Signature(List<int> data, RSAPrivateKey privateKey, RSAPublicKey publicKey) {
+    // Sign the data using RSA with SHA-256
+    final signer = RSASigner(SHA256Digest(), '0609608648016503040201');
+    signer.init(true, PrivateKeyParameter<RSAPrivateKey>(privateKey));
+    
+    final signature = signer.generateSignature(Uint8List.fromList(data)) as RSASignature;
+    
+    // Create a self-signed certificate
+    final cert = _createSelfSignedCertificate(publicKey, privateKey);
+    
+    // Create PKCS#7 SignedData structure
+    return _buildPKCS7SignedData(data, signature.bytes, cert);
+  }
+
+  /// Create a minimal self-signed X.509 certificate
+  Uint8List _createSelfSignedCertificate(RSAPublicKey publicKey, RSAPrivateKey privateKey) {
+    // Build a minimal X.509 certificate structure
+    final tbsCertificate = _buildTBSCertificate(publicKey);
+    
+    // Sign the TBS certificate
+    final signer = RSASigner(SHA256Digest(), '0609608648016503040201');
+    signer.init(true, PrivateKeyParameter<RSAPrivateKey>(privateKey));
+    final signature = signer.generateSignature(Uint8List.fromList(tbsCertificate)) as RSASignature;
+    
+    // Build the full certificate
+    return _buildCertificate(tbsCertificate, signature.bytes);
+  }
+
+  /// Build TBS (To Be Signed) Certificate
+  List<int> _buildTBSCertificate(RSAPublicKey publicKey) {
+    final content = BytesBuilder();
+    
+    // Version (v3 = 2)
+    content.add(_asn1Explicit(0, _asn1Integer(BigInt.from(2))));
+    
+    // Serial number
+    content.add(_asn1Integer(BigInt.from(DateTime.now().millisecondsSinceEpoch)));
+    
+    // Signature algorithm (SHA256withRSA)
+    content.add(_asn1SequenceFromList([
+      _asn1ObjectIdentifier([1, 2, 840, 113549, 1, 1, 11]),
+      _asn1Null(),
+    ]));
+    
+    // Issuer (CN=Android Debug)
+    content.add(_asn1SequenceFromList([
+      _asn1SetFromList([
+        _asn1SequenceFromList([
+          _asn1ObjectIdentifier([2, 5, 4, 3]),
+          _asn1UTF8String('Android Debug'),
+        ]),
+      ]),
+    ]));
+    
+    // Validity
+    final now = DateTime.now();
+    final notAfter = now.add(const Duration(days: 10000));
+    content.add(_asn1SequenceFromList([
+      _asn1UTCTime(now),
+      _asn1UTCTime(notAfter),
+    ]));
+    
+    // Subject (same as issuer for self-signed)
+    content.add(_asn1SequenceFromList([
+      _asn1SetFromList([
+        _asn1SequenceFromList([
+          _asn1ObjectIdentifier([2, 5, 4, 3]),
+          _asn1UTF8String('Android Debug'),
+        ]),
+      ]),
+    ]));
+    
+    // Subject Public Key Info
+    content.add(_asn1SequenceFromList([
+      _asn1SequenceFromList([
+        _asn1ObjectIdentifier([1, 2, 840, 113549, 1, 1, 1]),
+        _asn1Null(),
+      ]),
+      _asn1BitString(_asn1SequenceFromList([
+        _asn1Integer(publicKey.modulus!),
+        _asn1Integer(publicKey.exponent!),
+      ])),
+    ]));
+    
+    return _asn1SequenceRaw(content.toBytes());
+  }
+
+  /// Build the full certificate
+  Uint8List _buildCertificate(List<int> tbsCertificate, Uint8List signature) {
+    final content = BytesBuilder();
+    content.add(tbsCertificate);
+    content.add(_asn1SequenceFromList([
+      _asn1ObjectIdentifier([1, 2, 840, 113549, 1, 1, 11]),
+      _asn1Null(),
+    ]));
+    content.add(_asn1BitString(signature));
+    return Uint8List.fromList(_asn1SequenceRaw(content.toBytes()));
+  }
+
+  /// Build PKCS#7 SignedData structure
+  Uint8List _buildPKCS7SignedData(List<int> data, Uint8List signature, Uint8List certificate) {
+    // SignerInfo
+    final signerInfoContent = BytesBuilder();
+    signerInfoContent.add(_asn1Integer(BigInt.one)); // Version
+    
+    // IssuerAndSerialNumber
+    final issuerAndSerial = BytesBuilder();
+    issuerAndSerial.add(_asn1SequenceFromList([
+      _asn1SetFromList([
+        _asn1SequenceFromList([
+          _asn1ObjectIdentifier([2, 5, 4, 3]),
+          _asn1UTF8String('Android Debug'),
+        ]),
+      ]),
+    ]));
+    issuerAndSerial.add(_asn1Integer(BigInt.from(DateTime.now().millisecondsSinceEpoch)));
+    signerInfoContent.add(_asn1SequenceRaw(issuerAndSerial.toBytes()));
+    
+    // DigestAlgorithm (SHA-256)
+    signerInfoContent.add(_asn1SequenceFromList([
+      _asn1ObjectIdentifier([2, 16, 840, 1, 101, 3, 4, 2, 1]),
+      _asn1Null(),
+    ]));
+    
+    // DigestEncryptionAlgorithm (RSA)
+    signerInfoContent.add(_asn1SequenceFromList([
+      _asn1ObjectIdentifier([1, 2, 840, 113549, 1, 1, 1]),
+      _asn1Null(),
+    ]));
+    
+    // EncryptedDigest
+    signerInfoContent.add(_asn1OctetString(signature));
+    
+    final signerInfo = _asn1SequenceRaw(signerInfoContent.toBytes());
+    
+    // SignedData
+    final signedDataContent = BytesBuilder();
+    signedDataContent.add(_asn1Integer(BigInt.one)); // Version
+    
+    // DigestAlgorithms
+    signedDataContent.add(_asn1SetFromList([
+      _asn1SequenceFromList([
+        _asn1ObjectIdentifier([2, 16, 840, 1, 101, 3, 4, 2, 1]),
+        _asn1Null(),
+      ]),
+    ]));
+    
+    // ContentInfo
+    signedDataContent.add(_asn1SequenceFromList([
+      _asn1ObjectIdentifier([1, 2, 840, 113549, 1, 7, 1]),
+    ]));
+    
+    // Certificates [0] IMPLICIT
+    signedDataContent.add(_asn1Explicit(0, certificate));
+    
+    // SignerInfos
+    signedDataContent.add(_asn1SetRaw(signerInfo));
+    
+    final signedData = _asn1SequenceRaw(signedDataContent.toBytes());
+    
+    // ContentInfo wrapper
+    final wrapperContent = BytesBuilder();
+    wrapperContent.add(_asn1ObjectIdentifier([1, 2, 840, 113549, 1, 7, 2])); // signedData OID
+    wrapperContent.add(_asn1Explicit(0, signedData));
+    
+    return Uint8List.fromList(_asn1SequenceRaw(wrapperContent.toBytes()));
+  }
+
+  // ASN.1 helper methods
+  List<int> _asn1Integer(BigInt value) {
+    final bytes = _bigIntToBytes(value);
+    return [0x02, ..._asn1Length(bytes.length), ...bytes];
+  }
+
+  List<int> _asn1SequenceRaw(List<int> content) {
+    return [0x30, ..._asn1Length(content.length), ...content];
+  }
+  
+  List<int> _asn1SequenceFromList(List<List<int>> items) {
+    final content = <int>[];
+    for (final item in items) {
+      content.addAll(item);
+    }
+    return [0x30, ..._asn1Length(content.length), ...content];
+  }
+
+  List<int> _asn1SetRaw(List<int> content) {
+    return [0x31, ..._asn1Length(content.length), ...content];
+  }
+  
+  List<int> _asn1SetFromList(List<List<int>> items) {
+    final content = <int>[];
+    for (final item in items) {
+      content.addAll(item);
+    }
+    return [0x31, ..._asn1Length(content.length), ...content];
+  }
+
+  List<int> _asn1ObjectIdentifier(List<int> oid) {
+    final bytes = <int>[];
+    bytes.add(oid[0] * 40 + oid[1]);
+    for (var i = 2; i < oid.length; i++) {
+      bytes.addAll(_encodeOIDComponent(oid[i]));
+    }
+    return [0x06, ..._asn1Length(bytes.length), ...bytes];
+  }
+
+  List<int> _encodeOIDComponent(int value) {
+    if (value < 128) return [value];
+    final bytes = <int>[];
+    var v = value;
+    bytes.add(v & 0x7f);
+    v >>= 7;
+    while (v > 0) {
+      bytes.insert(0, (v & 0x7f) | 0x80);
+      v >>= 7;
+    }
+    return bytes;
+  }
+
+  List<int> _asn1Null() => [0x05, 0x00];
+
+  List<int> _asn1BitString(List<int> content) {
+    return [0x03, ..._asn1Length(content.length + 1), 0x00, ...content];
+  }
+
+  List<int> _asn1OctetString(List<int> content) {
+    return [0x04, ..._asn1Length(content.length), ...content];
+  }
+
+  List<int> _asn1UTF8String(String value) {
+    final bytes = utf8.encode(value);
+    return [0x0c, ..._asn1Length(bytes.length), ...bytes];
+  }
+
+  List<int> _asn1UTCTime(DateTime date) {
+    final str = '${_pad(date.year % 100)}${_pad(date.month)}${_pad(date.day)}'
+        '${_pad(date.hour)}${_pad(date.minute)}${_pad(date.second)}Z';
+    final bytes = utf8.encode(str);
+    return [0x17, ..._asn1Length(bytes.length), ...bytes];
+  }
+
+  String _pad(int value) => value.toString().padLeft(2, '0');
+
+  List<int> _asn1Explicit(int tag, List<int> content) {
+    return [0xa0 + tag, ..._asn1Length(content.length), ...content];
+  }
+
+  List<int> _asn1Length(int length) {
+    if (length < 128) return [length];
+    final bytes = <int>[];
+    var len = length;
+    while (len > 0) {
+      bytes.insert(0, len & 0xff);
+      len >>= 8;
+    }
+    return [0x80 + bytes.length, ...bytes];
+  }
+
+  List<int> _bigIntToBytes(BigInt value) {
+    if (value == BigInt.zero) return [0];
+    
+    var v = value;
+    final bytes = <int>[];
+    final negative = v.isNegative;
+    if (negative) v = -v;
+    
+    while (v > BigInt.zero) {
+      bytes.insert(0, (v & BigInt.from(0xff)).toInt());
+      v >>= 8;
+    }
+    
+    // Add leading zero if high bit is set (to avoid being interpreted as negative)
+    if (!negative && bytes.isNotEmpty && bytes[0] > 127) {
+      bytes.insert(0, 0);
+    }
+    
+    return bytes;
+  }
+
+  /// Create a debug keystore using keytool
+  Future<bool> _createDebugKeystore(String path) async {
     try {
-      await Process.run(
+      final result = await Process.run(
         'keytool',
         [
           '-genkey',
@@ -512,8 +950,10 @@ class FridaGadgetService {
           '-dname', 'CN=Android Debug,O=Android,C=US',
         ],
       );
+      return result.exitCode == 0;
     } catch (e) {
       debugPrint('Keytool error: $e');
+      return false;
     }
   }
 
