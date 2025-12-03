@@ -60,3 +60,4 @@ frida-gadget*.so
 # Patched APKs (user-generated)
 *_patched.apk
 *_signed.apk
+releases/

@@ -107,6 +107,9 @@ class _GadgetInjectionScreenState extends State<GadgetInjectionScreen> {
             : null,
         targetArchs: selectedArchsList,
         port: int.tryParse(_portController.text) ?? 27042,
+        onProgress: (message) {
+          _addLog(message);
+        },
       );
 
       for (final step in result.steps) {

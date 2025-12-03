@@ -1,9 +1,11 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 /// Service for injecting Frida Gadget into APKs for non-rooted device analysis
 class FridaGadgetService {
@@ -11,8 +13,8 @@ class FridaGadgetService {
   factory FridaGadgetService() => _instance;
   FridaGadgetService._internal();
 
-  // Frida Gadget version to use
-  static const String fridaVersion = '16.5.9';
+  // Frida Gadget version to use - update this to latest
+  static const String fridaVersion = '17.5.1';
   
   // Architecture mappings
   static const Map<String, String> archMap = {
@@ -43,7 +45,7 @@ class FridaGadgetService {
   }
 
   /// Download Frida Gadget for specific architecture
-  Future<String?> downloadGadget(String arch) async {
+  Future<String?> downloadGadget(String arch, {Function(String)? onProgress}) async {
     if (_gadgetCacheDir == null) await init();
     
     final fridaArch = archMap[arch];
@@ -56,61 +58,138 @@ class FridaGadgetService {
     
     // Check if already cached
     if (await File(cachedPath).exists()) {
+      onProgress?.call('Using cached gadget');
       return cachedPath;
     }
 
-    // Download from GitHub releases
+    // Download from GitHub releases (XZ compressed)
     final url = 'https://github.com/frida/frida/releases/download/$fridaVersion/$gadgetName.xz';
     
     try {
+      onProgress?.call('Downloading Frida Gadget $fridaVersion for $arch...');
       debugPrint('Downloading Frida Gadget from: $url');
-      final response = await http.get(Uri.parse(url));
+      
+      final request = http.Request('GET', Uri.parse(url));
+      final response = await http.Client().send(request);
       
       if (response.statusCode != 200) {
         throw Exception('Failed to download gadget: ${response.statusCode}');
       }
 
+      // Download with progress
+      final contentLength = response.contentLength ?? 0;
+      final bytes = <int>[];
+      int downloaded = 0;
+      
+      await for (final chunk in response.stream) {
+        bytes.addAll(chunk);
+        downloaded += chunk.length;
+        if (contentLength > 0) {
+          final progress = (downloaded / contentLength * 100).toInt();
+          onProgress?.call('Downloading: $progress%');
+        }
+      }
+      
+      onProgress?.call('Decompressing gadget...');
+      
       // Save compressed file
       final xzPath = '$cachedPath.xz';
-      await File(xzPath).writeAsBytes(response.bodyBytes);
+      await File(xzPath).writeAsBytes(bytes);
       
-      // Decompress XZ (we'll use external tool or pure dart)
-      final decompressed = await _decompressXz(xzPath);
+      // Decompress XZ
+      final decompressed = await _decompressXz(xzPath, onProgress: onProgress);
       if (decompressed == null) {
-        throw Exception('Failed to decompress gadget');
+        // Try downloading from alternative source or show helpful error
+        await File(xzPath).delete().catchError((_) => File(xzPath));
+        throw Exception('Failed to decompress gadget. Please ensure xz or 7z is available on the system.');
       }
       
       await File(cachedPath).writeAsBytes(decompressed);
-      await File(xzPath).delete();
+      await File(xzPath).delete().catchError((_) => File(xzPath));
       
+      onProgress?.call('Gadget ready!');
       return cachedPath;
     } catch (e) {
       debugPrint('Error downloading gadget: $e');
+      onProgress?.call('Error: $e');
       return null;
     }
   }
 
-  /// Decompress XZ file
-  Future<List<int>?> _decompressXz(String xzPath) async {
-    // Try using system xz command first
+  /// Decompress XZ file using various methods
+  Future<List<int>?> _decompressXz(String xzPath, {Function(String)? onProgress}) async {
+    final xzBytes = await File(xzPath).readAsBytes();
+    
+    // Method 1: Try pure Dart XZ decompression using archive package
     try {
-      final result = await Process.run('xz', ['-d', '-k', '-f', xzPath]);
-      if (result.exitCode == 0) {
-        final decompressedPath = xzPath.replaceAll('.xz', '');
-        final bytes = await File(decompressedPath).readAsBytes();
-        return bytes;
+      onProgress?.call('Trying Dart XZ decompression...');
+      final decoder = XZDecoder();
+      final decompressed = decoder.decodeBytes(xzBytes);
+      if (decompressed.isNotEmpty) {
+        return decompressed;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Dart XZ decompression failed: $e');
+    }
+    
+    // Method 2: Try system xz command (available on Linux/macOS)
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      try {
+        onProgress?.call('Trying system xz command...');
+        final result = await Process.run('xz', ['-d', '-k', '-f', xzPath]);
+        if (result.exitCode == 0) {
+          final decompressedPath = xzPath.replaceAll('.xz', '');
+          final bytes = await File(decompressedPath).readAsBytes();
+          return bytes;
+        }
+      } catch (_) {}
+    }
 
-    // Try 7z as fallback
-    try {
-      final outPath = xzPath.replaceAll('.xz', '');
-      final result = await Process.run('7z', ['x', '-y', '-o${Directory(xzPath).parent.path}', xzPath]);
-      if (result.exitCode == 0) {
-        final bytes = await File(outPath).readAsBytes();
-        return bytes;
-      }
-    } catch (_) {}
+    // Method 3: Try 7z as fallback (Windows)
+    if (Platform.isWindows) {
+      try {
+        onProgress?.call('Trying 7z decompression...');
+        final outPath = xzPath.replaceAll('.xz', '');
+        final parentDir = Directory(xzPath).parent.path;
+        final result = await Process.run('7z', ['x', '-y', '-o$parentDir', xzPath]);
+        if (result.exitCode == 0 && await File(outPath).exists()) {
+          final bytes = await File(outPath).readAsBytes();
+          return bytes;
+        }
+      } catch (_) {}
+      
+      // Try with full path to 7z
+      try {
+        final programFiles = Platform.environment['ProgramFiles'] ?? 'C:\\Program Files';
+        final sevenZipPath = '$programFiles\\7-Zip\\7z.exe';
+        if (await File(sevenZipPath).exists()) {
+          onProgress?.call('Trying 7-Zip at $sevenZipPath...');
+          final outPath = xzPath.replaceAll('.xz', '');
+          final parentDir = Directory(xzPath).parent.path;
+          final result = await Process.run(sevenZipPath, ['x', '-y', '-o$parentDir', xzPath]);
+          if (result.exitCode == 0 && await File(outPath).exists()) {
+            final bytes = await File(outPath).readAsBytes();
+            return bytes;
+          }
+        }
+      } catch (_) {}
+    }
+    
+    // Method 4: On Android, try using shell commands via adb or termux
+    if (Platform.isAndroid) {
+      try {
+        onProgress?.call('Trying Android xz decompression...');
+        // Try xz if available (some Android devices have busybox)
+        final result = await Process.run('xz', ['-d', '-k', '-f', xzPath]);
+        if (result.exitCode == 0) {
+          final decompressedPath = xzPath.replaceAll('.xz', '');
+          if (await File(decompressedPath).exists()) {
+            final bytes = await File(decompressedPath).readAsBytes();
+            return bytes;
+          }
+        }
+      } catch (_) {}
+    }
 
     return null;
   }
@@ -170,17 +249,23 @@ class FridaGadgetService {
     String? scriptPath,
     List<String>? targetArchs,
     int port = 27042,
+    Function(String)? onProgress,
   }) async {
     if (_workDir == null) await init();
     
     final result = GadgetInjectionResult();
     final workPath = '$_workDir/inject_${DateTime.now().millisecondsSinceEpoch}';
     
+    void addStep(String step) {
+      result.steps.add(step);
+      onProgress?.call(step);
+    }
+    
     try {
       await Directory(workPath).create(recursive: true);
       
       // Step 1: Extract APK
-      result.steps.add('Extracting APK...');
+      addStep('Extracting APK...');
       final apkBytes = await File(apkPath).readAsBytes();
       final archive = ZipDecoder().decodeBytes(apkBytes);
       
@@ -199,13 +284,13 @@ class FridaGadgetService {
       final archsToInject = targetArchs ?? 
           (existingArchs.isNotEmpty ? existingArchs.toList() : ['arm64-v8a', 'armeabi-v7a']);
       
-      result.steps.add('Target architectures: ${archsToInject.join(", ")}');
+      addStep('Target architectures: ${archsToInject.join(", ")}');
       
       // Step 3: Download gadgets for each architecture
       final gadgetPaths = <String, String>{};
       for (final arch in archsToInject) {
-        result.steps.add('Downloading gadget for $arch...');
-        final gadgetPath = await downloadGadget(arch);
+        addStep('Downloading gadget for $arch...');
+        final gadgetPath = await downloadGadget(arch, onProgress: onProgress);
         if (gadgetPath == null) {
           throw Exception('Failed to download gadget for $arch');
         }
@@ -213,7 +298,7 @@ class FridaGadgetService {
       }
       
       // Step 4: Generate config
-      result.steps.add('Generating gadget config...');
+      addStep('Generating gadget config...');
       final configJson = generateGadgetConfig(
         mode: mode,
         scriptPath: scriptPath,
@@ -221,7 +306,7 @@ class FridaGadgetService {
       );
       
       // Step 5: Create modified archive
-      result.steps.add('Injecting gadget into APK...');
+      addStep('Injecting gadget into APK...');
       final newArchive = Archive();
       
       // Copy existing files
@@ -268,7 +353,7 @@ class FridaGadgetService {
       }
       
       // Step 6: Modify AndroidManifest to load gadget
-      result.steps.add('Patching native library loading...');
+      addStep('Patching native library loading...');
       // Note: The gadget will be loaded if we inject it into the main activity's native libs
       // or by patching the app to load it via System.loadLibrary
       
@@ -278,7 +363,7 @@ class FridaGadgetService {
       await File(unsignedPath).writeAsBytes(zipBytes!);
       
       // Step 8: Zipalign
-      result.steps.add('Zipaligning APK...');
+      addStep('Zipaligning APK...');
       final alignedPath = '$workPath/aligned.apk';
       final alignResult = await _zipalign(unsignedPath, alignedPath);
       if (!alignResult) {
@@ -287,7 +372,7 @@ class FridaGadgetService {
       }
       
       // Step 9: Sign APK
-      result.steps.add('Signing APK...');
+      addStep('Signing APK...');
       final signResult = await _signApk(alignedPath, outputPath);
       if (!signResult) {
         throw Exception('Failed to sign APK');
@@ -295,7 +380,7 @@ class FridaGadgetService {
       
       result.success = true;
       result.outputPath = outputPath;
-      result.steps.add('Gadget injection complete!');
+      addStep('Gadget injection complete!');
       
       // Cleanup
       await Directory(workPath).delete(recursive: true);
