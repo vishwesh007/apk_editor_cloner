@@ -6,6 +6,7 @@ import 'frida_screen.dart';
 import 'events_screen.dart';
 import 'reports_screen.dart';
 import 'installed_apps_screen.dart';
+import 'termux_screen.dart';
 import '../widgets/status_bar.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -41,9 +42,9 @@ class _HomeScreenState extends State<HomeScreen> {
           screen: const FridaScreen(),
         ),
         NavigationItem(
-          icon: Icons.timeline,
-          label: 'Events',
-          screen: const EventsScreen(),
+          icon: Icons.terminal,
+          label: 'Termux',
+          screen: const TermuxScreen(),
         ),
         NavigationItem(
           icon: Icons.assessment,

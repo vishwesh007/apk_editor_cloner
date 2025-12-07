@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import '../services/android_platform_service.dart';
 
@@ -17,7 +18,7 @@ class _InstalledAppsScreenState extends State<InstalledAppsScreen>
   List<InstalledApp> _filteredApps = [];
   DeviceInfo? _deviceInfo;
   bool _isLoading = true;
-  bool _showSystemApps = false;
+  bool _showSystemApps = true; // Show all apps by default
   String _searchQuery = '';
   String _sortBy = 'name'; // name, package, date, permissions
   final _searchController = TextEditingController();
@@ -43,6 +44,11 @@ class _InstalledAppsScreenState extends State<InstalledAppsScreen>
     
     final apps = await _platformService.getInstalledPackages();
     final deviceInfo = await _platformService.getDeviceInfo();
+    
+    // Debug logging
+    debugPrint('[InstalledApps] Total apps retrieved: ${apps.length}');
+    debugPrint('[InstalledApps] System apps: ${apps.where((a) => a.isSystem).length}');
+    debugPrint('[InstalledApps] User apps: ${apps.where((a) => !a.isSystem).length}');
     
     setState(() {
       _allApps = apps;

@@ -1,0 +1,28 @@
+// Toast Demo Script
+// Shows a toast message every 10 seconds
+
+Java.perform(function() {
+    var Toast = Java.use('android.widget.Toast');
+    var context = Java.use('android.app.ActivityThread').currentApplication().getApplicationContext();
+    var String = Java.use('java.lang.String');
+    
+    var count = 0;
+    
+    // Function to show toast
+    function showToast(message) {
+        Java.scheduleOnMainThread(function() {
+            Toast.makeText(context, String.$new(message), 0).show();
+        });
+    }
+    
+    // Show initial toast
+    showToast("🔥 Frida Gadget Active! Toast #" + count);
+    send("Toast script started!");
+    
+    // Set up interval for repeated toasts
+    setInterval(function() {
+        count++;
+        showToast("🔥 Hello from Frida! Toast #" + count);
+        send("Toast #" + count + " displayed");
+    }, 10000);
+});

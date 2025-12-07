@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="protocolNames">
+        <item>UDP</item>
+        <item>TCP</item>
+    </string-array>
+    <string-array name="themeNames">
+        <item>zilgans/oranžs</item>
+        <item>zils/oranžs</item>
+        <item>violets/sarkans</item>
+        <item>dzintars/zils</item>
+        <item>oranžs/pelēks</item>
+        <item>zaļš</item>
+    </string-array>
+</resources>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <array name="default_wifi_home" />
+    <string-array name="logLevelNames">
+        <item>Verbose</item>
+        <item>Debug</item>
+        <item>Info</item>
+        <item>Warning</item>
+        <item>Error</item>
+    </string-array>
+    <string-array name="logLevelValues">
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
+        <item>5</item>
+        <item>6</item>
+    </string-array>
+    <string-array name="protocolNames">
+        <item>UDP</item>
+        <item>TCP</item>
+    </string-array>
+    <string-array name="protocolValues">
+        <item>17</item>
+        <item>6</item>
+    </string-array>
+    <string-array name="themeNames">
+        <item>teal/orange</item>
+        <item>blue/orange</item>
+        <item>purple/red</item>
+        <item>amber/blue</item>
+        <item>orange/grey</item>
+        <item>green</item>
+    </string-array>
+    <string-array name="themeValues">
+        <item>teal</item>
+        <item>blue</item>
+        <item>purple</item>
+        <item>amber</item>
+        <item>orange</item>
+        <item>green</item>
+    </string-array>
+</resources>

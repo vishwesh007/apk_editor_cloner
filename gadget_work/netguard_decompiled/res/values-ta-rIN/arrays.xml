@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="protocolNames">
+        <item>UDP</item>
+        <item>TCP</item>
+    </string-array>
+    <string-array name="themeNames">
+        <item>வெளிர்நீலம்/ஆரஞ்சு</item>
+        <item>நீலம்/ஆரஞ்சு</item>
+        <item>ஊதா/சிவப்பு</item>
+        <item>பொன்/நீலம்</item>
+        <item>ஆரஞ்சு/சாம்பல்</item>
+        <item>பச்சை</item>
+    </string-array>
+</resources>

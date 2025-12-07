@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="protocolNames">
+        <item>UDP</item>
+        <item>TCP</item>
+    </string-array>
+    <string-array name="themeNames">
+        <item>tial/kahel</item>
+        <item>kulay asul/kahel</item>
+        <item>kulay lila/pula</item>
+        <item>kulay marilaw/asul</item>
+        <item>kulay kahil/abo</item>
+        <item>berde</item>
+    </string-array>
+</resources>

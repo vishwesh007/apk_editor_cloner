@@ -1,0 +1,32 @@
+.class Landroidx/appcompat/widget/MenuPopupWindow$MenuDropDownListView$Api17Impl;
+.super Ljava/lang/Object;
+.source "SourceFile"
+
+
+# direct methods
+.method private constructor <init>()V
+    .locals 0
+
+    .line 1
+    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+
+    .line 2
+    .line 3
+    .line 4
+    return-void
+.end method
+
+.method static getLayoutDirection(Landroid/content/res/Configuration;)I
+    .locals 0
+
+    .line 1
+    invoke-virtual {p0}, Landroid/content/res/Configuration;->getLayoutDirection()I
+
+    .line 2
+    .line 3
+    .line 4
+    move-result p0
+
+    .line 5
+    return p0
+.end method

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="protocolNames">
+        <item>UDP</item>
+        <item>TCP</item>
+    </string-array>
+    <string-array name="themeNames">
+        <item>foglia di tè/arancione</item>
+        <item>blu/arancione</item>
+        <item>viola/rosso</item>
+        <item>ambra/blu</item>
+        <item>arancione/grigio</item>
+        <item>verde</item>
+    </string-array>
+</resources>

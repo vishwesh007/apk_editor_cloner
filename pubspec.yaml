@@ -32,6 +32,8 @@ dependencies:
   intl: ^0.18.1
   uuid: ^4.2.1
   pointycastle: ^3.7.4
+  path_provider: ^2.1.1
+  shared_preferences: ^2.2.2
   
   # Process execution
   process_run: ^0.14.1

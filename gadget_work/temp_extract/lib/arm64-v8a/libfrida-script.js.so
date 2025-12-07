@@ -1,0 +1,123 @@
+// Frida Gadget Toast Script with extensive logging
+console.log('[FRIDA-TOAST] Script loaded at: ' + new Date().toISOString());
+console.log('[FRIDA-TOAST] Starting initialization...');
+
+// Immediate log to confirm script execution
+send({ type: 'log', message: 'Frida script executing' });
+
+function tryShowToast() {
+  console.log('[FRIDA-TOAST] tryShowToast called');
+  
+  if (!Java.available) {
+    console.log('[FRIDA-TOAST] ERROR: Java not available!');
+    return false;
+  }
+  
+  console.log('[FRIDA-TOAST] Java is available, calling Java.perform...');
+  
+  Java.perform(function() {
+    console.log('[FRIDA-TOAST] Inside Java.perform');
+    
+    try {
+      console.log('[FRIDA-TOAST] Getting ActivityThread...');
+      var ActivityThread = Java.use('android.app.ActivityThread');
+      
+      console.log('[FRIDA-TOAST] Getting currentApplication...');
+      var app = ActivityThread.currentApplication();
+      
+      if (app === null) {
+        console.log('[FRIDA-TOAST] WARNING: currentApplication is null, will retry or hook');
+        hookApplicationOnCreate();
+        return;
+      }
+      
+      console.log('[FRIDA-TOAST] Got application: ' + app);
+      
+      var context = app.getApplicationContext();
+      console.log('[FRIDA-TOAST] Got context: ' + context);
+      
+      if (context === null) {
+        console.log('[FRIDA-TOAST] WARNING: context is null!');
+        return;
+      }
+      
+      console.log('[FRIDA-TOAST] Scheduling toast on main thread...');
+      
+      Java.scheduleOnMainThread(function() {
+        console.log('[FRIDA-TOAST] On main thread, creating toast...');
+        try {
+          var Toast = Java.use('android.widget.Toast');
+          var JavaString = Java.use('java.lang.String');
+          var message = JavaString.$new('FRIDA GADGET INJECTED!');
+          console.log('[FRIDA-TOAST] Calling Toast.makeText...');
+          var toast = Toast.makeText(context, message, 1);
+          console.log('[FRIDA-TOAST] Calling toast.show()...');
+          toast.show();
+          console.log('[FRIDA-TOAST] SUCCESS! Toast shown!');
+        } catch (toastErr) {
+          console.log('[FRIDA-TOAST] ERROR showing toast: ' + toastErr);
+        }
+      });
+      
+    } catch (err) {
+      console.log('[FRIDA-TOAST] ERROR in Java.perform: ' + err);
+      console.log('[FRIDA-TOAST] Stack: ' + err.stack);
+    }
+  });
+  
+  return true;
+}
+
+function hookApplicationOnCreate() {
+  console.log('[FRIDA-TOAST] Hooking Application.onCreate as fallback...');
+  
+  Java.perform(function() {
+    try {
+      var Application = Java.use('android.app.Application');
+      Application.onCreate.implementation = function() {
+        console.log('[FRIDA-TOAST] Application.onCreate called!');
+        this.onCreate();
+        
+        var context = this.getApplicationContext();
+        console.log('[FRIDA-TOAST] Got context from onCreate: ' + context);
+        
+        Java.scheduleOnMainThread(function() {
+          try {
+            var Toast = Java.use('android.widget.Toast');
+            var JavaString = Java.use('java.lang.String');
+            Toast.makeText(context, JavaString.$new('FRIDA INJECTED (onCreate)!'), 1).show();
+            console.log('[FRIDA-TOAST] SUCCESS! Toast shown from onCreate hook!');
+          } catch (e) {
+            console.log('[FRIDA-TOAST] ERROR in onCreate toast: ' + e);
+          }
+        });
+      };
+      console.log('[FRIDA-TOAST] Application.onCreate hooked successfully');
+    } catch (hookErr) {
+      console.log('[FRIDA-TOAST] ERROR hooking Application: ' + hookErr);
+    }
+  });
+}
+
+// Try immediately
+console.log('[FRIDA-TOAST] Attempting immediate toast...');
+tryShowToast();
+
+// Also try with delays
+console.log('[FRIDA-TOAST] Scheduling delayed attempts...');
+setTimeout(function() {
+  console.log('[FRIDA-TOAST] 1 second delay - trying toast...');
+  tryShowToast();
+}, 1000);
+
+setTimeout(function() {
+  console.log('[FRIDA-TOAST] 3 second delay - trying toast...');
+  tryShowToast();
+}, 3000);
+
+setTimeout(function() {
+  console.log('[FRIDA-TOAST] 5 second delay - trying toast...');
+  tryShowToast();
+}, 5000);
+
+console.log('[FRIDA-TOAST] Script initialization complete');

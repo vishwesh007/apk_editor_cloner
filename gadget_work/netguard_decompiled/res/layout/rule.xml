@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:paddingTop="8.0dip" android:paddingRight="4.0dip" android:paddingBottom="8.0dip" android:layout_width="fill_parent" android:layout_height="wrap_content" android:paddingEnd="4.0dip"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <LinearLayout android:orientation="horizontal" android:layout_width="fill_parent" android:layout_height="wrap_content" android:baselineAligned="true">
+        <LinearLayout android:orientation="horizontal" android:id="@id/llApplication" android:layout_width="0.0dip" android:layout_height="wrap_content" android:layout_weight="1.0">
+            <ImageView android:layout_gravity="center" android:id="@id/ivExpander" android:layout_width="32.0dip" android:layout_height="32.0dip" android:src="?expander" android:alpha="0.5" />
+            <ImageView android:layout_gravity="center_vertical" android:id="@id/ivIcon" android:layout_width="?android:listPreferredItemHeightSmall" android:layout_height="?android:listPreferredItemHeightSmall" />
+            <TextView android:textAppearance="@style/TextMedium" android:ellipsize="end" android:gravity="center_vertical" android:id="@id/tvName" android:paddingLeft="8.0dip" android:layout_width="0.0dip" android:layout_height="fill_parent" android:layout_weight="1.0" android:paddingStart="8.0dip" />
+        </LinearLayout>
+        <TextView android:textAppearance="@style/TextSmall" android:textSize="12.0sp" android:layout_gravity="bottom" android:id="@id/tvHosts" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="4.0dip" android:layout_marginStart="4.0dip" />
+        <RelativeLayout android:id="@id/rlLockdown" android:layout_width="24.0dip" android:layout_height="?android:listPreferredItemHeightSmall" android:layout_marginLeft="8.0dip" android:layout_marginStart="8.0dip">
+            <ImageView android:id="@id/ivLockdown" android:layout_width="24.0dip" android:layout_height="24.0dip" android:src="@drawable/lockdown" android:layout_centerInParent="true" />
+        </RelativeLayout>
+        <LinearLayout android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content">
+            <RelativeLayout android:layout_width="24.0dip" android:layout_height="?android:listPreferredItemHeightSmall" android:layout_marginLeft="8.0dip" android:layout_marginStart="8.0dip">
+                <CheckBox android:id="@id/cbWifi" android:layout_width="wrap_content" android:layout_height="wrap_content" android:button="@drawable/wifi" android:layout_centerInParent="true" android:contentDescription="@string/title_block_wifi" />
+            </RelativeLayout>
+            <LinearLayout android:layout_gravity="center_vertical" android:orientation="vertical" android:layout_width="wrap_content" android:layout_height="wrap_content">
+                <ImageView android:layout_gravity="center_horizontal" android:id="@id/ivScreenWifi" android:layout_width="16.0dip" android:layout_height="16.0dip" android:src="@drawable/screen" />
+                <View android:layout_gravity="center_horizontal" android:visibility="invisible" android:layout_width="16.0dip" android:layout_height="16.0dip" />
+            </LinearLayout>
+        </LinearLayout>
+        <LinearLayout android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content">
+            <RelativeLayout android:layout_width="24.0dip" android:layout_height="?android:listPreferredItemHeightSmall" android:layout_marginLeft="8.0dip" android:layout_marginStart="8.0dip">
+                <CheckBox android:id="@id/cbOther" android:layout_width="wrap_content" android:layout_height="wrap_content" android:button="@drawable/other" android:layout_centerInParent="true" android:contentDescription="@string/title_block_other" />
+            </RelativeLayout>
+            <LinearLayout android:layout_gravity="center_vertical" android:orientation="vertical" android:layout_width="wrap_content" android:layout_height="wrap_content">
+                <ImageView android:layout_gravity="center_horizontal" android:id="@id/ivScreenOther" android:layout_width="16.0dip" android:layout_height="16.0dip" android:src="@drawable/screen" />
+                <TextView android:textAppearance="@style/TextSmall" android:textSize="14.0sp" android:textColor="?colorOff" android:gravity="center_horizontal" android:layout_gravity="center_vertical" android:id="@id/tvRoaming" android:layout_width="16.0dip" android:layout_height="16.0dip" android:text="@string/title_roaming_symbol" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+    <TextView android:textAppearance="@style/TextSmall" android:textStyle="italic" android:id="@id/tvRemarkMessaging" android:padding="6.0dip" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/title_messaging" />
+    <TextView android:textAppearance="@style/TextSmall" android:textStyle="italic" android:id="@id/tvRemarkDownload" android:padding="6.0dip" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/title_download" />
+    <LinearLayout android:orientation="vertical" android:id="@id/llConfiguration" android:visibility="gone" android:layout_width="fill_parent" android:layout_height="fill_parent" android:layout_marginLeft="32.0dip" android:layout_marginTop="8.0dip" android:layout_marginStart="32.0dip">
+        <TextView android:textAppearance="@style/TextSmall" android:id="@id/tvUid" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4.0dip" />
+        <TextView android:textAppearance="@style/TextSmall" android:id="@id/tvPackage" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4.0dip" />
+        <TextView android:textAppearance="@style/TextSmall" android:id="@id/tvVersion" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4.0dip" />
+        <TextView android:textAppearance="@style/TextSmall" android:textStyle="italic" android:id="@id/tvDescription" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4.0dip" />
+        <TextView android:textAppearance="@style/TextSmall" android:textStyle="italic" android:id="@id/tvInternet" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4.0dip" android:text="@string/title_internet" />
+        <TextView android:textAppearance="@style/TextSmall" android:textStyle="italic" android:id="@id/tvDisabled" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4.0dip" android:text="@string/title_disabled" />
+        <LinearLayout android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4.0dip">
+            <Button android:layout_gravity="center_vertical" android:id="@id/btnRelated" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginRight="8.0dip" android:text="@string/title_related" android:layout_marginEnd="8.0dip" />
+            <ImageButton android:layout_gravity="center_vertical" android:id="@id/ibDatasaver" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginRight="8.0dip" android:src="?iconDatasaver" android:layout_marginEnd="8.0dip" />
+            <ImageButton android:layout_gravity="center_vertical" android:id="@id/ibSettings" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginRight="8.0dip" android:src="?iconSettings" android:layout_marginEnd="8.0dip" />
+            <ImageButton android:layout_gravity="center_vertical" android:id="@id/ibLaunch" android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="?iconLaunch" />
+        </LinearLayout>
+        <CheckBox android:id="@id/cbApply" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4.0dip" android:text="@string/title_apply" />
+        <TextView android:textAppearance="@style/TextTitle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="12.0dip" android:text="@string/title_conditions" />
+        <LinearLayout android:orientation="horizontal" android:id="@id/llScreenWifi" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4.0dip">
+            <ImageView android:layout_gravity="center_vertical" android:id="@id/ivWifiLegend" android:layout_width="16.0dip" android:layout_height="16.0dip" android:src="@drawable/screen_on" />
+            <CheckBox android:textAppearance="@style/TextSmall" android:id="@id/cbScreenWifi" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/title_screen_wifi" />
+        </LinearLayout>
+        <LinearLayout android:orientation="horizontal" android:id="@id/llScreenOther" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4.0dip">
+            <ImageView android:layout_gravity="center_vertical" android:id="@id/ivOtherLegend" android:layout_width="16.0dip" android:layout_height="16.0dip" android:src="@drawable/screen_on" />
+            <CheckBox android:textAppearance="@style/TextSmall" android:id="@id/cbScreenOther" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/title_screen_other" />
+        </LinearLayout>
+        <LinearLayout android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4.0dip">
+            <TextView android:textAppearance="@style/TextSmall" android:textSize="14.0sp" android:textColor="?colorOff" android:gravity="center_horizontal" android:layout_gravity="center_vertical" android:layout_width="16.0dip" android:layout_height="16.0dip" android:text="@string/title_roaming_symbol" />
+            <CheckBox android:textAppearance="@style/TextSmall" android:id="@id/cbRoaming" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/title_roaming" />
+        </LinearLayout>
+        <LinearLayout android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4.0dip">
+            <ImageView android:layout_gravity="center_vertical" android:id="@id/ivLockdownLegend" android:layout_width="16.0dip" android:layout_height="16.0dip" android:src="@drawable/lockdown_off" />
+            <CheckBox android:textAppearance="@style/TextSmall" android:id="@id/cbLockdown" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/title_lockdown" />
+        </LinearLayout>
+        <ImageButton android:id="@id/btnClear" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4.0dip" android:src="?iconDelete" />
+        <LinearLayout android:orientation="vertical" android:id="@id/llFilter" android:layout_width="fill_parent" android:layout_height="wrap_content">
+            <LinearLayout android:orientation="horizontal" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginTop="12.0dip">
+                <TextView android:textAppearance="@style/TextTitle" android:layout_gravity="center_vertical" android:layout_width="0.0dip" android:layout_height="wrap_content" android:text="@string/title_access" android:layout_weight="1.0" />
+                <ImageView android:layout_gravity="center_vertical" android:id="@id/ivLive" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginRight="8.0dip" android:src="?iconPause" android:layout_marginEnd="8.0dip" />
+            </LinearLayout>
+            <LinearLayout android:orientation="horizontal" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginTop="12.0dip">
+                <TextView android:textAppearance="@style/TextSmall" android:layout_gravity="center_vertical" android:id="@id/tvLogging" android:layout_width="0.0dip" android:layout_height="wrap_content" android:layout_weight="1.0" />
+                <Button android:layout_gravity="center_vertical" android:id="@id/btnLogging" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginRight="8.0dip" android:minWidth="0.0dip" android:minHeight="0.0dip" android:text="@string/title_logging_configure" android:layout_marginEnd="8.0dip" style="?android:buttonStyleSmall" />
+            </LinearLayout>
+            <TextView android:textAppearance="@style/TextSmall" android:textStyle="italic" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4.0dip" android:text="@string/title_precedence" />
+            <eu.faircode.netguard.ExpandedListView android:id="@id/lvAccess" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginTop="4.0dip" />
+            <ImageButton android:layout_gravity="center_vertical" android:id="@id/btnClearAccess" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4.0dip" android:src="?iconDelete" />
+            <TextView android:textAppearance="@style/TextTitle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="12.0dip" android:text="@string/title_options" />
+            <CheckBox android:textAppearance="@style/TextSmall" android:id="@id/cbNotify" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4.0dip" android:text="@string/title_notify" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

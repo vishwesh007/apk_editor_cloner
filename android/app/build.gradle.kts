@@ -19,6 +19,16 @@ android {
         jvmTarget = JavaVersion.VERSION_11.toString()
     }
 
+    packaging {
+        resources {
+            excludes += listOf(
+                "META-INF/versions/9/OSGI-INF/MANIFEST.MF",
+                "META-INF/BCKEY.DSA",
+                "META-INF/BCKEY.SF"
+            )
+        }
+    }
+
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.droid_analyst"
@@ -41,4 +51,20 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
+    implementation("org.bouncycastle:bcpkix-jdk18on:1.78.1")
+    // APK Signing Library (supports v1, v2, v3, v4 schemes)
+    implementation("com.android.tools.build:apksig:8.7.3")
+    
+    // Smali/Baksmali libraries for native Android DEX manipulation
+    // This allows us to decompile DEX -> smali, modify, and recompile without apktool
+    implementation("com.android.tools.smali:smali:3.0.8")
+    implementation("com.android.tools.smali:smali-baksmali:3.0.8")
+    implementation("com.android.tools.smali:smali-dexlib2:3.0.8")
+    
+    // D8/R8 for JAR to DEX conversion (runs apktool.jar, etc. on Android)
+    implementation("com.android.tools:r8:8.5.35")
 }

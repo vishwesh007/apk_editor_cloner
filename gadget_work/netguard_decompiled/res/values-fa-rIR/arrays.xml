@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="protocolNames">
+        <item>UDP</item>
+        <item>TCP</item>
+    </string-array>
+    <string-array name="themeNames">
+        <item>آبی دریایی/نارنجی</item>
+        <item>آبی/نارنجی</item>
+        <item>بنفش/قرمز</item>
+        <item>کهربایی/آبی</item>
+        <item>نارنجی/خاکستری</item>
+        <item>سبز</item>
+    </string-array>
+</resources>

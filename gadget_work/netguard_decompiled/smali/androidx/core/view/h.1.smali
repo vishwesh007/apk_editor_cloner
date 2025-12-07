@@ -1,0 +1,27 @@
+.class public final synthetic Landroidx/core/view/h;
+.super Ljava/lang/Object;
+.source "SourceFile"
+
+
+# direct methods
+.method public static bridge synthetic a(Landroid/view/ContentInfo;)I
+    .locals 0
+
+    .line 1
+    invoke-virtual {p0}, Landroid/view/ContentInfo;->getFlags()I
+
+    move-result p0
+
+    return p0
+.end method
+
+.method public static synthetic b(Landroid/content/ClipData;I)Landroid/view/ContentInfo$Builder;
+    .locals 1
+
+    .line 1
+    new-instance v0, Landroid/view/ContentInfo$Builder;
+
+    invoke-direct {v0, p0, p1}, Landroid/view/ContentInfo$Builder;-><init>(Landroid/content/ClipData;I)V
+
+    return-object v0
+.end method

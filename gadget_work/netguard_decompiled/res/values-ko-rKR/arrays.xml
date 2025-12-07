@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="protocolNames">
+        <item>UDP</item>
+        <item>TCP</item>
+    </string-array>
+    <string-array name="themeNames">
+        <item>암청/주황</item>
+        <item>파랑/주황</item>
+        <item>보라/빨강</item>
+        <item>황토/파랑</item>
+        <item>주황/회색</item>
+        <item>초록</item>
+    </string-array>
+</resources>

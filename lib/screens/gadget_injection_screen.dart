@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 import '../services/frida_gadget_service.dart';
 import '../services/apk_patcher_service.dart';
 import '../services/android_platform_service.dart';
@@ -26,6 +27,7 @@ class _GadgetInjectionScreenState extends State<GadgetInjectionScreen> {
   final _portController = TextEditingController(text: '27042');
   
   String _selectedMode = FridaGadgetService.modeListen;
+  bool _showToast = true; // Default to true as per request
   bool _isProcessing = false;
   List<String> _logs = [];
   GadgetInjectionResult? _result;
@@ -57,14 +59,22 @@ class _GadgetInjectionScreenState extends State<GadgetInjectionScreen> {
     super.dispose();
   }
 
-  void _generateOutputPath() {
+  void _generateOutputPath() async {
     final input = _apkPathController.text;
     if (input.isEmpty) return;
     
-    final dir = File(input).parent.path;
     final name = input.split(Platform.pathSeparator).last;
     final baseName = name.replaceAll('.apk', '');
-    _outputPathController.text = '$dir${Platform.pathSeparator}${baseName}_gadget.apk';
+    
+    // Use /storage/emulated/0/Download/ for easy access to output APK
+    if (Platform.isAndroid) {
+      // Output to Download folder for easy user access
+      const downloadDir = '/storage/emulated/0/Download';
+      _outputPathController.text = '$downloadDir/${baseName}_gadget.apk';
+    } else {
+      final dir = File(input).parent.path;
+      _outputPathController.text = '$dir${Platform.pathSeparator}${baseName}_gadget.apk';
+    }
   }
 
   void _addLog(String message) {
@@ -107,6 +117,7 @@ class _GadgetInjectionScreenState extends State<GadgetInjectionScreen> {
             : null,
         targetArchs: selectedArchsList,
         port: int.tryParse(_portController.text) ?? 27042,
+        showToast: _showToast,
         onProgress: (message) {
           _addLog(message);
         },
@@ -435,6 +446,43 @@ class _GadgetInjectionScreenState extends State<GadgetInjectionScreen> {
                         ),
                       ),
                     ],
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            
+            // Injection Options
+             Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Injection Options',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 12),
+                    CheckboxListTile(
+                      title: const Text('Show Success Toast'),
+                      subtitle: const Text(
+                        'Injects a script to show a toast message on app startup. '
+                        'Note: This forces Gadget Mode to "Script Mode".',
+                        style: TextStyle(fontSize: 11),
+                      ),
+                      value: _showToast,
+                      onChanged: (value) {
+                        setState(() {
+                          _showToast = value ?? false;
+                          if (_showToast) {
+                            _selectedMode = FridaGadgetService.modeScript;
+                          }
+                        });
+                      },
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                    ),
                   ],
                 ),
               ),

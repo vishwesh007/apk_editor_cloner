@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:icon="@android:drawable/ic_menu_preferences" android:enabled="true" android:shortcutId="settings" android:shortcutShortLabel="@string/menu_settings" android:shortcutLongLabel="@string/menu_settings" android:shortcutDisabledMessage="@string/menu_settings">
+        <intent android:targetPackage="eu.faircode.netguard" android:action="android.intent.action.VIEW" android:targetClass="eu.faircode.netguard.ActivitySettings" />
+        <categories android:name="android.shortcut.settings" />
+    </shortcut>
+    <shortcut android:icon="@android:drawable/ic_menu_recent_history" android:enabled="true" android:shortcutId="log" android:shortcutShortLabel="@string/menu_log" android:shortcutLongLabel="@string/menu_log" android:shortcutDisabledMessage="@string/menu_log">
+        <intent android:targetPackage="eu.faircode.netguard" android:action="android.intent.action.VIEW" android:targetClass="eu.faircode.netguard.ActivityLog" />
+        <categories android:name="android.shortcut.log" />
+    </shortcut>
+</shortcuts>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="protocolNames">
+        <item>UDP</item>
+        <item>TCP</item>
+    </string-array>
+    <string-array name="themeNames">
+        <item>verde albăstrui/portocaliu</item>
+        <item>albastru/portocaliu</item>
+        <item>mov/roșu</item>
+        <item>culoarea chihlimbarului/albastru</item>
+        <item>portocaliu/gri</item>
+        <item>verde</item>
+    </string-array>
+</resources>

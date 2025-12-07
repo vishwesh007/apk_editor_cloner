@@ -1,0 +1,141 @@
+.class public Landroidx/preference/SwitchPreference;
+.super Landroidx/preference/TwoStatePreference;
+.source "SourceFile"
+
+
+# direct methods
+.method public constructor <init>(Landroid/content/Context;Landroid/util/AttributeSet;)V
+    .locals 3
+
+    .line 1
+    const v0, 0x7f040148
+
+    .line 2
+    .line 3
+    .line 4
+    const v1, 0x101036d
+
+    .line 5
+    .line 6
+    .line 7
+    invoke-static {p1, v0, v1}, Landroidx/core/content/res/v;->b(Landroid/content/Context;II)I
+
+    .line 8
+    .line 9
+    .line 10
+    move-result v0
+
+    .line 11
+    invoke-direct {p0, p1, p2, v0}, Landroidx/preference/TwoStatePreference;-><init>(Landroid/content/Context;Landroid/util/AttributeSet;I)V
+
+    .line 12
+    .line 13
+    .line 14
+    sget-object v1, Ls/b;->j:[I
+
+    .line 15
+    .line 16
+    const/4 v2, 0x0
+
+    .line 17
+    invoke-virtual {p1, p2, v1, v0, v2}, Landroid/content/Context;->obtainStyledAttributes(Landroid/util/AttributeSet;[III)Landroid/content/res/TypedArray;
+
+    .line 18
+    .line 19
+    .line 20
+    move-result-object p1
+
+    .line 21
+    const/4 p2, 0x7
+
+    .line 22
+    invoke-static {p1, p2, v2}, Landroidx/core/content/res/v;->g(Landroid/content/res/TypedArray;II)Ljava/lang/String;
+
+    .line 23
+    .line 24
+    .line 25
+    move-result-object p2
+
+    .line 26
+    invoke-virtual {p0, p2}, Landroidx/preference/TwoStatePreference;->o(Ljava/lang/String;)V
+
+    .line 27
+    .line 28
+    .line 29
+    const/4 p2, 0x6
+
+    .line 30
+    const/4 v0, 0x1
+
+    .line 31
+    invoke-static {p1, p2, v0}, Landroidx/core/content/res/v;->g(Landroid/content/res/TypedArray;II)Ljava/lang/String;
+
+    .line 32
+    .line 33
+    .line 34
+    move-result-object p2
+
+    .line 35
+    invoke-virtual {p0, p2}, Landroidx/preference/TwoStatePreference;->n(Ljava/lang/String;)V
+
+    .line 36
+    .line 37
+    .line 38
+    const/16 p2, 0x9
+
+    .line 39
+    .line 40
+    const/4 v0, 0x3
+
+    .line 41
+    invoke-static {p1, p2, v0}, Landroidx/core/content/res/v;->g(Landroid/content/res/TypedArray;II)Ljava/lang/String;
+
+    .line 42
+    .line 43
+    .line 44
+    const/16 p2, 0x8
+
+    .line 45
+    .line 46
+    const/4 v0, 0x4
+
+    .line 47
+    invoke-static {p1, p2, v0}, Landroidx/core/content/res/v;->g(Landroid/content/res/TypedArray;II)Ljava/lang/String;
+
+    .line 48
+    .line 49
+    .line 50
+    const/4 p2, 0x2
+
+    .line 51
+    invoke-virtual {p1, p2, v2}, Landroid/content/res/TypedArray;->getBoolean(IZ)Z
+
+    .line 52
+    .line 53
+    .line 54
+    move-result p2
+
+    .line 55
+    const/4 v0, 0x5
+
+    .line 56
+    invoke-virtual {p1, v0, p2}, Landroid/content/res/TypedArray;->getBoolean(IZ)Z
+
+    .line 57
+    .line 58
+    .line 59
+    move-result p2
+
+    .line 60
+    invoke-virtual {p0, p2}, Landroidx/preference/TwoStatePreference;->m(Z)V
+
+    .line 61
+    .line 62
+    .line 63
+    invoke-virtual {p1}, Landroid/content/res/TypedArray;->recycle()V
+
+    .line 64
+    .line 65
+    .line 66
+    return-void
+.end method

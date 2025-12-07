@@ -15,15 +15,26 @@ class AndroidPlatformService {
 
   /// Get list of installed packages on the device
   Future<List<InstalledApp>> getInstalledPackages() async {
-    if (!isAndroid) return [];
+    if (!isAndroid) {
+      print('[AndroidPlatformService] Not running on Android, returning empty list');
+      return [];
+    }
     
     try {
+      print('[AndroidPlatformService] Calling getInstalledPackages native method...');
       final String result = await platform.invokeMethod('getInstalledPackages');
       final List<dynamic> jsonList = json.decode(result);
       
-      return jsonList.map((item) => InstalledApp.fromJson(item)).toList();
+      print('[AndroidPlatformService] Got ${jsonList.length} packages from native');
+      
+      final apps = jsonList.map((item) => InstalledApp.fromJson(item)).toList();
+      final systemApps = apps.where((a) => a.isSystem).length;
+      final userApps = apps.where((a) => !a.isSystem).length;
+      print('[AndroidPlatformService] System apps: $systemApps, User apps: $userApps');
+      
+      return apps;
     } on PlatformException catch (e) {
-      print('Failed to get installed packages: ${e.message}');
+      print('[AndroidPlatformService] Failed to get installed packages: ${e.message}');
       return [];
     }
   }
@@ -70,6 +81,88 @@ class AndroidPlatformService {
     } on PlatformException catch (e) {
       print('Failed to get APK path: ${e.message}');
       return null;
+    }
+  }
+
+  /// Sign an APK using native Android signing with BouncyCastle
+  /// Returns true if signing was successful
+  Future<bool> signApk(String inputPath, String outputPath) async {
+    if (!isAndroid) {
+      print('[AndroidPlatformService] Not running on Android, cannot use native signing');
+      return false;
+    }
+    
+    try {
+      print('[AndroidPlatformService] Calling signApk native method...');
+      print('[AndroidPlatformService] Input: $inputPath');
+      print('[AndroidPlatformService] Output: $outputPath');
+      
+      final bool result = await platform.invokeMethod('signApk', {
+        'inputPath': inputPath,
+        'outputPath': outputPath,
+      });
+      
+      print('[AndroidPlatformService] Native signing result: $result');
+      return result;
+    } on PlatformException catch (e) {
+      print('[AndroidPlatformService] Failed to sign APK: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Get app cache directory path (for storing output APKs)
+  Future<String?> getCacheDir() async {
+    if (!isAndroid) return null;
+    
+    try {
+      final String? result = await platform.invokeMethod('getCacheDir');
+      print('[AndroidPlatformService] Cache dir: $result');
+      return result;
+    } on PlatformException catch (e) {
+      print('[AndroidPlatformService] Failed to get cache dir: ${e.message}');
+      return null;
+    }
+  }
+
+  /// Patch an APK using native smali injection (Android only)
+  /// This uses baksmali/smali libraries directly without requiring apktool
+  /// Returns true if patching was successful
+  Future<bool> patchApkWithSmali({
+    required String inputApk,
+    required String outputApk,
+    required String gadgetLibPath,
+    String? targetClass,
+    String? configPath,
+    String? scriptPath,
+  }) async {
+    if (!isAndroid) {
+      print('[AndroidPlatformService] Not running on Android, cannot use native smali patching');
+      return false;
+    }
+    
+    try {
+      print('[AndroidPlatformService] Calling patchApkWithSmali native method...');
+      print('[AndroidPlatformService] Input APK: $inputApk');
+      print('[AndroidPlatformService] Output APK: $outputApk');
+      print('[AndroidPlatformService] Target class: $targetClass');
+      print('[AndroidPlatformService] Gadget lib: $gadgetLibPath');
+      print('[AndroidPlatformService] Config: $configPath');
+      print('[AndroidPlatformService] Script: $scriptPath');
+      
+      final bool result = await platform.invokeMethod('patchApkWithSmali', {
+        'inputApk': inputApk,
+        'outputApk': outputApk,
+        'targetClass': targetClass,
+        'gadgetLibPath': gadgetLibPath,
+        'configPath': configPath,
+        'scriptPath': scriptPath,
+      });
+      
+      print('[AndroidPlatformService] Native smali patching result: $result');
+      return result;
+    } on PlatformException catch (e) {
+      print('[AndroidPlatformService] Failed to patch APK with smali: ${e.message}');
+      return false;
     }
   }
 }

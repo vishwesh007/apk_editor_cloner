@@ -1,0 +1,407 @@
+.class public final Lm/a;
+.super Lm/c;
+.source "SourceFile"
+
+
+# direct methods
+.method public constructor <init>()V
+    .locals 0
+
+    .line 1
+    invoke-direct {p0}, Lm/c;-><init>()V
+
+    .line 2
+    .line 3
+    .line 4
+    return-void
+.end method
+
+
+# virtual methods
+.method public final c(I)I
+    .locals 3
+
+    .line 1
+    const/16 v0, 0x10
+
+    .line 2
+    .line 3
+    invoke-virtual {p0, v0}, Lm/c;->a(I)I
+
+    .line 4
+    .line 5
+    .line 6
+    move-result v0
+
+    .line 7
+    if-eqz v0, :cond_0
+
+    .line 8
+    .line 9
+    iget-object v1, p0, Lm/c;->b:Ljava/nio/ByteBuffer;
+
+    .line 10
+    .line 11
+    iget v2, p0, Lm/c;->a:I
+
+    .line 12
+    .line 13
+    add-int/2addr v0, v2
+
+    .line 14
+    invoke-virtual {v1, v0}, Ljava/nio/ByteBuffer;->getInt(I)I
+
+    .line 15
+    .line 16
+    .line 17
+    move-result v2
+
+    .line 18
+    add-int/2addr v2, v0
+
+    .line 19
+    add-int/lit8 v2, v2, 0x4
+
+    .line 20
+    .line 21
+    mul-int/lit8 p1, p1, 0x4
+
+    .line 22
+    .line 23
+    add-int/2addr p1, v2
+
+    .line 24
+    invoke-virtual {v1, p1}, Ljava/nio/ByteBuffer;->getInt(I)I
+
+    .line 25
+    .line 26
+    .line 27
+    move-result p1
+
+    .line 28
+    goto :goto_0
+
+    .line 29
+    :cond_0
+    const/4 p1, 0x0
+
+    .line 30
+    :goto_0
+    return p1
+.end method
+
+.method public final d()I
+    .locals 2
+
+    .line 1
+    const/16 v0, 0x10
+
+    .line 2
+    .line 3
+    invoke-virtual {p0, v0}, Lm/c;->a(I)I
+
+    .line 4
+    .line 5
+    .line 6
+    move-result v0
+
+    .line 7
+    if-eqz v0, :cond_0
+
+    .line 8
+    .line 9
+    iget v1, p0, Lm/c;->a:I
+
+    .line 10
+    .line 11
+    add-int/2addr v0, v1
+
+    .line 12
+    iget-object v1, p0, Lm/c;->b:Ljava/nio/ByteBuffer;
+
+    .line 13
+    .line 14
+    invoke-virtual {v1, v0}, Ljava/nio/ByteBuffer;->getInt(I)I
+
+    .line 15
+    .line 16
+    .line 17
+    move-result v1
+
+    .line 18
+    add-int/2addr v1, v0
+
+    .line 19
+    iget-object v0, p0, Lm/c;->b:Ljava/nio/ByteBuffer;
+
+    .line 20
+    .line 21
+    invoke-virtual {v0, v1}, Ljava/nio/ByteBuffer;->getInt(I)I
+
+    .line 22
+    .line 23
+    .line 24
+    move-result v0
+
+    .line 25
+    goto :goto_0
+
+    .line 26
+    :cond_0
+    const/4 v0, 0x0
+
+    .line 27
+    :goto_0
+    return v0
+.end method
+
+.method public final e()Z
+    .locals 4
+
+    .line 1
+    const/4 v0, 0x6
+
+    .line 2
+    invoke-virtual {p0, v0}, Lm/c;->a(I)I
+
+    .line 3
+    .line 4
+    .line 5
+    move-result v0
+
+    .line 6
+    const/4 v1, 0x0
+
+    .line 7
+    if-eqz v0, :cond_0
+
+    .line 8
+    .line 9
+    iget-object v2, p0, Lm/c;->b:Ljava/nio/ByteBuffer;
+
+    .line 10
+    .line 11
+    iget v3, p0, Lm/c;->a:I
+
+    .line 12
+    .line 13
+    add-int/2addr v0, v3
+
+    .line 14
+    invoke-virtual {v2, v0}, Ljava/nio/ByteBuffer;->get(I)B
+
+    .line 15
+    .line 16
+    .line 17
+    move-result v0
+
+    .line 18
+    if-eqz v0, :cond_0
+
+    .line 19
+    .line 20
+    const/4 v1, 0x1
+
+    .line 21
+    :cond_0
+    return v1
+.end method
+
+.method public final f()S
+    .locals 3
+
+    .line 1
+    const/16 v0, 0xe
+
+    .line 2
+    .line 3
+    invoke-virtual {p0, v0}, Lm/c;->a(I)I
+
+    .line 4
+    .line 5
+    .line 6
+    move-result v0
+
+    .line 7
+    if-eqz v0, :cond_0
+
+    .line 8
+    .line 9
+    iget-object v1, p0, Lm/c;->b:Ljava/nio/ByteBuffer;
+
+    .line 10
+    .line 11
+    iget v2, p0, Lm/c;->a:I
+
+    .line 12
+    .line 13
+    add-int/2addr v0, v2
+
+    .line 14
+    invoke-virtual {v1, v0}, Ljava/nio/ByteBuffer;->getShort(I)S
+
+    .line 15
+    .line 16
+    .line 17
+    move-result v0
+
+    .line 18
+    goto :goto_0
+
+    .line 19
+    :cond_0
+    const/4 v0, 0x0
+
+    .line 20
+    :goto_0
+    return v0
+.end method
+
+.method public final g()I
+    .locals 3
+
+    .line 1
+    const/4 v0, 0x4
+
+    .line 2
+    invoke-virtual {p0, v0}, Lm/c;->a(I)I
+
+    .line 3
+    .line 4
+    .line 5
+    move-result v0
+
+    .line 6
+    if-eqz v0, :cond_0
+
+    .line 7
+    .line 8
+    iget-object v1, p0, Lm/c;->b:Ljava/nio/ByteBuffer;
+
+    .line 9
+    .line 10
+    iget v2, p0, Lm/c;->a:I
+
+    .line 11
+    .line 12
+    add-int/2addr v0, v2
+
+    .line 13
+    invoke-virtual {v1, v0}, Ljava/nio/ByteBuffer;->getInt(I)I
+
+    .line 14
+    .line 15
+    .line 16
+    move-result v0
+
+    .line 17
+    goto :goto_0
+
+    .line 18
+    :cond_0
+    const/4 v0, 0x0
+
+    .line 19
+    :goto_0
+    return v0
+.end method
+
+.method public final h()S
+    .locals 3
+
+    .line 1
+    const/16 v0, 0x8
+
+    .line 2
+    .line 3
+    invoke-virtual {p0, v0}, Lm/c;->a(I)I
+
+    .line 4
+    .line 5
+    .line 6
+    move-result v0
+
+    .line 7
+    if-eqz v0, :cond_0
+
+    .line 8
+    .line 9
+    iget-object v1, p0, Lm/c;->b:Ljava/nio/ByteBuffer;
+
+    .line 10
+    .line 11
+    iget v2, p0, Lm/c;->a:I
+
+    .line 12
+    .line 13
+    add-int/2addr v0, v2
+
+    .line 14
+    invoke-virtual {v1, v0}, Ljava/nio/ByteBuffer;->getShort(I)S
+
+    .line 15
+    .line 16
+    .line 17
+    move-result v0
+
+    .line 18
+    goto :goto_0
+
+    .line 19
+    :cond_0
+    const/4 v0, 0x0
+
+    .line 20
+    :goto_0
+    return v0
+.end method
+
+.method public final i()S
+    .locals 3
+
+    .line 1
+    const/16 v0, 0xc
+
+    .line 2
+    .line 3
+    invoke-virtual {p0, v0}, Lm/c;->a(I)I
+
+    .line 4
+    .line 5
+    .line 6
+    move-result v0
+
+    .line 7
+    if-eqz v0, :cond_0
+
+    .line 8
+    .line 9
+    iget-object v1, p0, Lm/c;->b:Ljava/nio/ByteBuffer;
+
+    .line 10
+    .line 11
+    iget v2, p0, Lm/c;->a:I
+
+    .line 12
+    .line 13
+    add-int/2addr v0, v2
+
+    .line 14
+    invoke-virtual {v1, v0}, Ljava/nio/ByteBuffer;->getShort(I)S
+
+    .line 15
+    .line 16
+    .line 17
+    move-result v0
+
+    .line 18
+    goto :goto_0
+
+    .line 19
+    :cond_0
+    const/4 v0, 0x0
+
+    .line 20
+    :goto_0
+    return v0
+.end method

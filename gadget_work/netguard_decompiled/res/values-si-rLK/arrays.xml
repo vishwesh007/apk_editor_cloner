@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="protocolNames">
+        <item>යූ.ඩී.පී.</item>
+        <item>ස.පා.කෙ (TCP)</item>
+    </string-array>
+    <string-array name="themeNames">
+        <item>teal/orange</item>
+        <item>නිල්/තැඹිලි</item>
+        <item>දම්/රතු</item>
+        <item>amber/blue</item>
+        <item>තැඹිලි/අළු</item>
+        <item>කොළ</item>
+    </string-array>
+</resources>

@@ -1,0 +1,1 @@
+{"interaction":{"type":"script","path":"libfrida-script.js.so","on_load":"resume","on_change":"reload"}}

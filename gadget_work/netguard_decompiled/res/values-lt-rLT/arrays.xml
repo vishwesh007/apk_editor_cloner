@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="protocolNames">
+        <item>UDP duomenys</item>
+        <item>TCP klientas</item>
+    </string-array>
+    <string-array name="themeNames">
+        <item>žalsvai mėlyna/oranžinė</item>
+        <item>mėlyna/oranžinė</item>
+        <item>purpurinė/raudona</item>
+        <item>gintarinė/mėlyna</item>
+        <item>oranžinė/pilka</item>
+        <item>žalia</item>
+    </string-array>
+</resources>

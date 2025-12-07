@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView android:orientation="vertical" android:padding="16.0dip" android:layout_width="fill_parent" android:layout_height="fill_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <LinearLayout android:orientation="vertical" android:id="@id/llChallenge" android:layout_width="fill_parent" android:layout_height="wrap_content">
+        <TextView android:textAppearance="@style/TextMedium" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16.0dip" android:text="@string/title_pro_challenge" />
+        <LinearLayout android:orientation="horizontal" android:layout_width="fill_parent" android:layout_height="wrap_content">
+            <TextView android:textAppearance="@style/TextMedium" android:textStyle="bold" android:id="@id/tvChallenge" android:layout_width="0.0dip" android:layout_height="wrap_content" android:text="@string/title_pro_challenge" android:layout_weight="1.0" android:textIsSelectable="true" />
+            <ImageButton android:id="@id/ibCopy" android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@drawable/baseline_file_copy_24" android:layout_marginStart="8.0dip" />
+        </LinearLayout>
+        <TextView android:textAppearance="@style/TextMedium" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16.0dip" android:text="@string/title_pro_reponse" />
+        <LinearLayout android:orientation="horizontal" android:layout_width="fill_parent" android:layout_height="wrap_content">
+            <EditText android:id="@id/etResponse" android:layout_width="0.0dip" android:layout_height="wrap_content" android:layout_weight="1.0" android:inputType="text" android:importantForAccessibility="no" />
+            <ImageButton android:id="@id/ibPaste" android:layout_width="wrap_content" android:layout_height="wrap_content" android:src="@drawable/baseline_file_copy_24" android:layout_marginStart="8.0dip" />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

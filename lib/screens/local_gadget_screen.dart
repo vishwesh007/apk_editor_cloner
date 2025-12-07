@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'script_console_screen.dart';
 
 /// Screen for connecting to Frida Gadget and monitoring injected apps
 class LocalGadgetScreen extends StatefulWidget {
@@ -19,6 +20,7 @@ class _LocalGadgetScreenState extends State<LocalGadgetScreen> {
   bool _isConnected = false;
   bool _isConnecting = false;
   String? _connectedApp;
+  String? _connectedAppPath; // APK path for connected app
   List<Map<String, dynamic>> _appsWithGadget = [];
   bool _loadingApps = false;
 
@@ -112,6 +114,7 @@ class _LocalGadgetScreenState extends State<LocalGadgetScreen> {
 
   Future<void> _testConnection(Map<String, dynamic> app) async {
     final packageName = app['packageName'] as String;
+    final sourceDir = app['sourceDir'] as String?;
     final config = app['gadgetConfig'] as Map<String, dynamic>?;
     final dynamicPort = app['gadgetPort'] ?? config?['port'];
     final port = switch (dynamicPort) {
@@ -138,6 +141,7 @@ class _LocalGadgetScreenState extends State<LocalGadgetScreen> {
         setState(() {
           _isConnected = true;
           _connectedApp = packageName;
+          _connectedAppPath = sourceDir;
         });
         _addLog(
             '✓ Connected! Gadget is responding on ${addressLabel.replaceFirst('tcp:', 'port ')}',
@@ -169,6 +173,7 @@ class _LocalGadgetScreenState extends State<LocalGadgetScreen> {
       setState(() {
         _isConnected = false;
         _connectedApp = null;
+        _connectedAppPath = null;
       });
     }
   }
@@ -224,6 +229,24 @@ class _LocalGadgetScreenState extends State<LocalGadgetScreen> {
                       ],
                     ),
                   ),
+                  ElevatedButton.icon(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ScriptConsoleScreen(
+                          connectedApp: _connectedApp,
+                          apkPath: _connectedAppPath,
+                        ),
+                      ),
+                    ),
+                    icon: const Icon(Icons.code, size: 16),
+                    label: const Text('Scripts'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.deepPurple,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   TextButton(
                     onPressed: _disconnect,
                     child: const Text('Disconnect'),

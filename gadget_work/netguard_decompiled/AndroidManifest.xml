@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?><manifest xmlns:android="http://schemas.android.com/apk/res/android" android:compileSdkVersion="35" android:compileSdkVersionCodename="15" android:installLocation="internalOnly" package="eu.faircode.netguard" platformBuildVersionCode="35" platformBuildVersionName="15">
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="com.android.vending.BILLING"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN"/>
+            <category android:name="android.intent.category.LAUNCHER"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <category android:name="android.intent.category.DEFAULT"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <category android:name="android.intent.category.BROWSABLE"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.PICK"/>
+            <category android:name="android.intent.category.DEFAULT"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.GET_CONTENT"/>
+            <category android:name="android.intent.category.DEFAULT"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.INSERT"/>
+            <category android:name="android.intent.category.DEFAULT"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.EDIT"/>
+            <category android:name="android.intent.category.DEFAULT"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND"/>
+            <category android:name="android.intent.category.DEFAULT"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO"/>
+            <category android:name="android.intent.category.DEFAULT"/>
+        </intent>
+        <intent>
+            <action android:name="com.android.vending.billing.InAppBillingService.BIND"/>
+        </intent>
+        <intent>
+            <action android:name="com.google.android.apps.play.billingtestcompanion.BillingOverrideService.BIND"/>
+        </intent>
+    </queries>
+    <permission android:description="@string/app_description" android:label="@string/app_name" android:name="eu.faircode.netguard.permission.ADMIN" android:protectionLevel="signature"/>
+    <uses-permission android:name="eu.faircode.netguard.permission.ADMIN"/>
+    <uses-feature android:name="android.hardware.wifi" android:required="false"/>
+    <uses-feature android:name="android.hardware.telephony" android:required="false"/>
+    <uses-feature android:name="android.software.app_widgets" android:required="false"/>
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
+    <permission android:name="eu.faircode.netguard.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" android:protectionLevel="signature"/>
+    <uses-permission android:name="eu.faircode.netguard.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"/>
+    <application android:allowBackup="false" android:appCategory="productivity" android:appComponentFactory="androidx.core.app.CoreComponentFactory" android:description="@string/app_description" android:extractNativeLibs="true" android:icon="@mipmap/ic_launcher" android:label="@string/app_name" android:name="eu.faircode.netguard.ApplicationEx" android:networkSecurityConfig="@xml/network_security_config" android:roundIcon="@mipmap/ic_launcher_round" android:supportsRtl="true" android:theme="@style/AppThemeTeal">
+        <meta-data android:name="android.max_aspect" android:value="2.1"/>
+        <activity android:configChanges="orientation|screenSize" android:exported="true" android:label="@string/app_name" android:launchMode="singleTop" android:name="eu.faircode.netguard.ActivityMain" android:resizeableActivity="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MANAGE_NETWORK_USAGE"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts"/>
+        </activity>
+        <activity android:configChanges="orientation|screenSize" android:exported="true" android:label="@string/menu_settings" android:name="eu.faircode.netguard.ActivitySettings" android:parentActivityName="eu.faircode.netguard.ActivityMain">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.APPLICATION_PREFERENCES"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+            <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".ActivityMain"/>
+        </activity>
+        <activity android:configChanges="orientation|screenSize" android:label="@string/menu_log" android:name="eu.faircode.netguard.ActivityLog" android:parentActivityName="eu.faircode.netguard.ActivityMain">
+            <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".ActivityMain"/>
+        </activity>
+        <activity android:configChanges="orientation|screenSize" android:label="@string/title_pro" android:name="eu.faircode.netguard.ActivityPro" android:parentActivityName="eu.faircode.netguard.ActivityMain">
+            <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".ActivityMain"/>
+        </activity>
+        <activity android:configChanges="orientation|screenSize" android:label="@string/setting_show_resolved" android:name="eu.faircode.netguard.ActivityDns" android:parentActivityName="eu.faircode.netguard.ActivitySettings">
+            <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".ActivitySettings"/>
+        </activity>
+        <activity android:configChanges="orientation|screenSize" android:label="@string/setting_forwarding" android:name="eu.faircode.netguard.ActivityForwarding" android:parentActivityName="eu.faircode.netguard.ActivitySettings">
+            <meta-data android:name="android.support.PARENT_ACTIVITY" android:value=".ActivitySettings"/>
+        </activity>
+        <activity android:configChanges="orientation|screenSize" android:exported="true" android:label="@string/app_name" android:name="eu.faircode.netguard.ActivityForwardApproval" android:theme="@style/AppDialog">
+            <intent-filter>
+                <action android:name="eu.faircode.netguard.START_PORT_FORWARD"/>
+                <action android:name="eu.faircode.netguard.STOP_PORT_FORWARD"/>
+            </intent-filter>
+        </activity>
+        <service android:exported="true" android:foregroundServiceType="specialUse" android:label="@string/app_name" android:name="eu.faircode.netguard.ServiceSinkhole" android:permission="android.permission.BIND_VPN_SERVICE">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="NetGuard is a firewall app using the Android VPN service to filter traffic on the device. A foreground service is required to process internet traffic in real-time to be able to allow and block traffic as configured by the user of the app. There is no other way to do this, and other foreground service types are either too limited or not appropriate."/>
+            <intent-filter>
+                <action android:name="android.net.VpnService"/>
+            </intent-filter>
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="NetGuard is a firewall app using the Android VPN service to filter traffic on the device. A foreground service is required to process internet traffic in real-time to be able to allow and block traffic as configured by the user of the app. There is no other way to do this, and other foreground service types are either too limited or not appropriate."/>
+        </service>
+        <service android:exported="true" android:foregroundServiceType="specialUse" android:label="@string/app_name" android:name="eu.faircode.netguard.ServiceExternal">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="NetGuard is a firewall app using the Android VPN service to filter traffic on the device. A foreground service is required to process internet traffic in real-time to be able to allow and block traffic as configured by the user of the app. There is no other way to do this, and other foreground service types are either too limited or not appropriate."/>
+            <intent-filter>
+                <action android:name="eu.faircode.netguard.DOWNLOAD_HOSTS_FILE"/>
+            </intent-filter>
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="NetGuard is a firewall app using the Android VPN service to filter traffic on the device. A foreground service is required to process internet traffic in real-time to be able to allow and block traffic as configured by the user of the app. There is no other way to do this, and other foreground service types are either too limited or not appropriate."/>
+        </service>
+        <service android:exported="true" android:icon="@drawable/ic_security_white_24dp" android:label="@string/app_name" android:name="eu.faircode.netguard.ServiceTileMain" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE"/>
+            </intent-filter>
+        </service>
+        <service android:exported="true" android:icon="@drawable/ic_equalizer_white_24dp" android:label="@string/setting_stats_category" android:name="eu.faircode.netguard.ServiceTileGraph" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE"/>
+            </intent-filter>
+        </service>
+        <service android:exported="true" android:icon="@drawable/ic_filter_list_white_24dp" android:label="@string/setting_filter" android:name="eu.faircode.netguard.ServiceTileFilter" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE"/>
+            </intent-filter>
+        </service>
+        <service android:exported="true" android:icon="@drawable/ic_lock_outline_white_24dp" android:label="@string/setting_lockdown" android:name="eu.faircode.netguard.ServiceTileLockdown" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE"/>
+            </intent-filter>
+        </service>
+        <receiver android:exported="true" android:label="@string/app_name" android:name="eu.faircode.netguard.ReceiverAutostart">
+            <intent-filter android:priority="999">
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+            </intent-filter>
+        </receiver>
+        <receiver android:exported="true" android:name="eu.faircode.netguard.ReceiverPackageRemoved">
+            <intent-filter>
+                <action android:name="android.intent.action.PACKAGE_FULLY_REMOVED"/>
+                <data android:scheme="package"/>
+            </intent-filter>
+        </receiver>
+        <receiver android:exported="true" android:label="@string/app_name" android:name="eu.faircode.netguard.WidgetMain">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widgetmain"/>
+        </receiver>
+        <receiver android:exported="true" android:label="@string/setting_lockdown" android:name="eu.faircode.netguard.WidgetLockdown">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widgetlockdown"/>
+        </receiver>
+        <receiver android:exported="true" android:label="@string/app_name" android:name="eu.faircode.netguard.WidgetAdmin" android:permission="eu.faircode.netguard.permission.ADMIN">
+            <intent-filter>
+                <action android:name="eu.faircode.netguard.ON"/>
+                <action android:name="eu.faircode.netguard.OFF"/>
+                <action android:name="eu.faircode.netguard.LOCKDOWN_ON"/>
+                <action android:name="eu.faircode.netguard.LOCKDOWN_OFF"/>
+            </intent-filter>
+        </receiver>
+        <meta-data android:name="com.google.android.play.billingclient.version" android:value="7.1.1"/>
+        <activity android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize" android:exported="false" android:name="com.android.billingclient.api.ProxyBillingActivity" android:theme="@android:style/Theme.Translucent.NoTitleBar"/>
+        <activity android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize" android:exported="false" android:name="com.android.billingclient.api.ProxyBillingActivityV2" android:theme="@android:style/Theme.Translucent.NoTitleBar"/>
+        <activity android:exported="false" android:name="com.google.android.gms.common.api.GoogleApiActivity" android:theme="@android:style/Theme.Translucent.NoTitleBar"/>
+        <meta-data android:name="com.google.android.gms.version" android:value="@integer/google_play_services_version"/>
+        <provider android:authorities="eu.faircode.netguard.androidx-startup" android:exported="false" android:name="androidx.startup.InitializationProvider">
+            <meta-data android:name="androidx.emoji2.text.EmojiCompatInitializer" android:value="androidx.startup"/>
+            <meta-data android:name="androidx.lifecycle.ProcessLifecycleInitializer" android:value="androidx.startup"/>
+        </provider>
+        <uses-library android:name="androidx.window.extensions" android:required="false"/>
+        <uses-library android:name="androidx.window.sidecar" android:required="false"/>
+        <service android:exported="false" android:name="com.google.android.datatransport.runtime.backends.TransportBackendDiscovery">
+            <meta-data android:name="backend:com.google.android.datatransport.cct.CctBackendFactory" android:value="cct"/>
+        </service>
+        <service android:exported="false" android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService" android:permission="android.permission.BIND_JOB_SERVICE"/>
+        <receiver android:exported="false" android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver"/>
+    </application>
+</manifest>

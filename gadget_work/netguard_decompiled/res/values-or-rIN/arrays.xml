@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="protocolNames">
+        <item>UDP</item>
+        <item>TCP</item>
+    </string-array>
+    <string-array name="themeNames">
+        <item>ଟିଲ୍/କମଳା</item>
+        <item>ନୀଳ/କମଳା</item>
+        <item>ବାଇଗଣୀ/ନାଲି</item>
+        <item>ଆମ୍ବର/ନୀଳ</item>
+        <item>କମଳା/ଧୂସର</item>
+        <item>ସବୁଜ</item>
+    </string-array>
+</resources>

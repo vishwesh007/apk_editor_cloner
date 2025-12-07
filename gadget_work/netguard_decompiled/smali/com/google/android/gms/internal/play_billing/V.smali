@@ -1,0 +1,31 @@
+.class public final Lcom/google/android/gms/internal/play_billing/V;
+.super Ljava/lang/Object;
+.source "SourceFile"
+
+
+# instance fields
+.field a:[Ljava/lang/Object;
+
+.field b:I
+
+.field c:Lcom/google/android/gms/internal/play_billing/U;
+
+
+# direct methods
+.method public constructor <init>()V
+    .locals 1
+
+    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+
+    const/16 v0, 0x8
+
+    new-array v0, v0, [Ljava/lang/Object;
+
+    iput-object v0, p0, Lcom/google/android/gms/internal/play_billing/V;->a:[Ljava/lang/Object;
+
+    const/4 v0, 0x0
+
+    iput v0, p0, Lcom/google/android/gms/internal/play_billing/V;->b:I
+
+    return-void
+.end method

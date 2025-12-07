@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="protocolNames">
+        <item>UDP</item>
+        <item>TCP</item>
+    </string-array>
+    <string-array name="themeNames">
+        <item>modro-zelená/oranžová</item>
+        <item>modrá/oranžová</item>
+        <item>fialová/červená</item>
+        <item>jantarová/modrá</item>
+        <item>oranžová/šedá</item>
+        <item>zelená</item>
+    </string-array>
+</resources>

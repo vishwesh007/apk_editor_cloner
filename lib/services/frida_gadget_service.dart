@@ -8,6 +8,8 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pointycastle/export.dart';
+import 'android_platform_service.dart';
+import 'elf_patcher_service.dart';
 
 /// Service for injecting Frida Gadget into APKs for non-rooted device analysis
 class FridaGadgetService {
@@ -203,6 +205,7 @@ class FridaGadgetService {
     String? host,
     int port = 27042,
     bool pauseOnStart = true,
+    bool embeddedScript = false,
   }) {
     final config = <String, dynamic>{
       'interaction': <String, dynamic>{},
@@ -210,10 +213,17 @@ class FridaGadgetService {
 
     switch (mode) {
       case modeScript:
-        // Embedded script mode - runs script automatically on start
+        // Script mode - runs script automatically on start
+        // When embeddedScript is true, use relative path to script in same lib folder
+        // Otherwise use the provided scriptPath or default
+        final path = embeddedScript 
+            ? 'libfrida-script.js.so'  // Relative to gadget config location
+            : (scriptPath ?? '/data/local/tmp/frida-script.js');
         config['interaction'] = {
           'type': 'script',
-          'path': scriptPath ?? '/data/local/tmp/frida-script.js',
+          'path': path,
+          // Ensure the app isn't paused when gadget loads
+          'on_load': 'resume',
           'on_change': 'reload',
         };
         break;
@@ -251,6 +261,7 @@ class FridaGadgetService {
     String? scriptPath,
     List<String>? targetArchs,
     int port = 27042,
+    bool showToast = false,
     Function(String)? onProgress,
   }) async {
     if (_workDir == null) await init();
@@ -299,17 +310,163 @@ class FridaGadgetService {
         gadgetPaths[arch] = gadgetPath;
       }
       
+      // Prepare script content if toast is requested
+      String finalMode = mode;
+      String? finalScriptContent = scriptContent;
+      
+      if (showToast) {
+        addStep('Adding toast injection script...');
+        finalMode = modeScript; // Must be in script mode to run the toast script
+        
+        const toastScript = '''
+// Frida Gadget Toast Script with extensive logging
+console.log('[FRIDA-TOAST] Script loaded at: ' + new Date().toISOString());
+console.log('[FRIDA-TOAST] Starting initialization...');
+
+// Immediate log to confirm script execution
+send({ type: 'log', message: 'Frida script executing' });
+
+function tryShowToast() {
+  console.log('[FRIDA-TOAST] tryShowToast called');
+  
+  if (!Java.available) {
+    console.log('[FRIDA-TOAST] ERROR: Java not available!');
+    return false;
+  }
+  
+  console.log('[FRIDA-TOAST] Java is available, calling Java.perform...');
+  
+  Java.perform(function() {
+    console.log('[FRIDA-TOAST] Inside Java.perform');
+    
+    try {
+      console.log('[FRIDA-TOAST] Getting ActivityThread...');
+      var ActivityThread = Java.use('android.app.ActivityThread');
+      
+      console.log('[FRIDA-TOAST] Getting currentApplication...');
+      var app = ActivityThread.currentApplication();
+      
+      if (app === null) {
+        console.log('[FRIDA-TOAST] WARNING: currentApplication is null, will retry or hook');
+        hookApplicationOnCreate();
+        return;
+      }
+      
+      console.log('[FRIDA-TOAST] Got application: ' + app);
+      
+      var context = app.getApplicationContext();
+      console.log('[FRIDA-TOAST] Got context: ' + context);
+      
+      if (context === null) {
+        console.log('[FRIDA-TOAST] WARNING: context is null!');
+        return;
+      }
+      
+      console.log('[FRIDA-TOAST] Scheduling toast on main thread...');
+      
+      Java.scheduleOnMainThread(function() {
+        console.log('[FRIDA-TOAST] On main thread, creating toast...');
+        try {
+          var Toast = Java.use('android.widget.Toast');
+          var JavaString = Java.use('java.lang.String');
+          var message = JavaString.\$new('FRIDA GADGET INJECTED!');
+          console.log('[FRIDA-TOAST] Calling Toast.makeText...');
+          var toast = Toast.makeText(context, message, 1);
+          console.log('[FRIDA-TOAST] Calling toast.show()...');
+          toast.show();
+          console.log('[FRIDA-TOAST] SUCCESS! Toast shown!');
+        } catch (toastErr) {
+          console.log('[FRIDA-TOAST] ERROR showing toast: ' + toastErr);
+        }
+      });
+      
+    } catch (err) {
+      console.log('[FRIDA-TOAST] ERROR in Java.perform: ' + err);
+      console.log('[FRIDA-TOAST] Stack: ' + err.stack);
+    }
+  });
+  
+  return true;
+}
+
+function hookApplicationOnCreate() {
+  console.log('[FRIDA-TOAST] Hooking Application.onCreate as fallback...');
+  
+  Java.perform(function() {
+    try {
+      var Application = Java.use('android.app.Application');
+      Application.onCreate.implementation = function() {
+        console.log('[FRIDA-TOAST] Application.onCreate called!');
+        this.onCreate();
+        
+        var context = this.getApplicationContext();
+        console.log('[FRIDA-TOAST] Got context from onCreate: ' + context);
+        
+        Java.scheduleOnMainThread(function() {
+          try {
+            var Toast = Java.use('android.widget.Toast');
+            var JavaString = Java.use('java.lang.String');
+            Toast.makeText(context, JavaString.\$new('FRIDA INJECTED (onCreate)!'), 1).show();
+            console.log('[FRIDA-TOAST] SUCCESS! Toast shown from onCreate hook!');
+          } catch (e) {
+            console.log('[FRIDA-TOAST] ERROR in onCreate toast: ' + e);
+          }
+        });
+      };
+      console.log('[FRIDA-TOAST] Application.onCreate hooked successfully');
+    } catch (hookErr) {
+      console.log('[FRIDA-TOAST] ERROR hooking Application: ' + hookErr);
+    }
+  });
+}
+
+// Try immediately
+console.log('[FRIDA-TOAST] Attempting immediate toast...');
+tryShowToast();
+
+// Also try with delays
+console.log('[FRIDA-TOAST] Scheduling delayed attempts...');
+setTimeout(function() {
+  console.log('[FRIDA-TOAST] 1 second delay - trying toast...');
+  tryShowToast();
+}, 1000);
+
+setTimeout(function() {
+  console.log('[FRIDA-TOAST] 3 second delay - trying toast...');
+  tryShowToast();
+}, 3000);
+
+setTimeout(function() {
+  console.log('[FRIDA-TOAST] 5 second delay - trying toast...');
+  tryShowToast();
+}, 5000);
+
+console.log('[FRIDA-TOAST] Script initialization complete');
+''';
+        
+        if (finalScriptContent != null) {
+          finalScriptContent = '$finalScriptContent\n\n$toastScript';
+        } else {
+          finalScriptContent = toastScript;
+        }
+      }
+
       // Step 4: Generate config
       addStep('Generating gadget config...');
       final configJson = generateGadgetConfig(
-        mode: mode,
+        mode: finalMode,
         scriptPath: scriptPath,
         port: port,
+        embeddedScript: finalMode == modeScript && finalScriptContent != null,
       );
       
-      // Step 5: Create modified archive
+      // Step 5: Create modified archive with ELF patching
       addStep('Injecting gadget into APK...');
       final newArchive = Archive();
+      final elfPatcher = ElfPatcherService();
+      
+      // Track native libs per architecture for patching
+      final nativeLibs = <String, List<ArchiveFile>>{};
       
       // Copy existing files
       for (final file in archive) {
@@ -321,43 +478,234 @@ class FridaGadgetService {
              file.name.endsWith('.MF'))) {
           continue;
         }
+        
+        // Track native libraries for later patching
+        if (file.name.startsWith('lib/') && file.name.endsWith('.so') &&
+            !file.name.contains('frida-gadget')) {
+          final parts = file.name.split('/');
+          if (parts.length >= 3) {
+            final arch = parts[1];
+            nativeLibs[arch] ??= [];
+            nativeLibs[arch]!.add(file);
+          }
+        }
+        
+        // Mark .so files as uncompressed (required for Android native lib loading)
+        if (file.name.endsWith('.so')) {
+          file.compress = false;
+        }
+        
         newArchive.addFile(file);
       }
       
-      // Add gadget libraries
+      // Add gadget libraries and patch existing native libs
       for (final arch in archsToInject) {
         final gadgetBytes = await File(gadgetPaths[arch]!).readAsBytes();
         
-        // Add as libfrida-gadget.so
-        newArchive.addFile(ArchiveFile(
+        // Add as libfrida-gadget.so (STORE without compression for native libs)
+        final gadgetFile = ArchiveFile(
           'lib/$arch/libfrida-gadget.so',
           gadgetBytes.length,
           gadgetBytes,
-        ));
+        );
+        gadgetFile.compress = false; // Native libs must be uncompressed
+        newArchive.addFile(gadgetFile);
         
-        // Add config file
+        // Add config file (can be compressed)
         final configBytes = utf8.encode(configJson);
-        newArchive.addFile(ArchiveFile(
+        final configFile = ArchiveFile(
           'lib/$arch/libfrida-gadget.config.so',
           configBytes.length,
           configBytes,
-        ));
+        );
+        configFile.compress = false; // Keep uncompressed to be safe
+        newArchive.addFile(configFile);
+        
+        // If script mode, embed script next to gadget config (in same lib/<arch> folder)
+        if (finalMode == modeScript && finalScriptContent != null) {
+          final scriptBytes = utf8.encode(finalScriptContent);
+          final scriptFile = ArchiveFile(
+            'lib/$arch/libfrida-script.js.so',
+            scriptBytes.length,
+            scriptBytes,
+          );
+          scriptFile.compress = false; // Keep uncompressed
+          newArchive.addFile(scriptFile);
+          addStep('Embedded script for $arch');
+        }
       }
       
-      // If script mode, embed script
-      if (mode == modeScript && scriptContent != null) {
-        final scriptBytes = utf8.encode(scriptContent);
-        newArchive.addFile(ArchiveFile(
-          'assets/frida-script.js',
-          scriptBytes.length,
-          scriptBytes,
-        ));
+      // Step 6: Patch to load gadget
+      // We try multiple methods to ensure the gadget loads:
+      // Method 1: ELF patching (add DT_NEEDED to existing native lib)
+      // Method 2: Inject a minimal DEX bootstrap that loads the gadget
+      
+      addStep('Patching app to load frida-gadget...');
+      
+      bool patchedAnyLib = false;
+      
+      // Method 1: Try ELF patching first
+      for (final arch in archsToInject) {
+        if (nativeLibs.containsKey(arch) && nativeLibs[arch]!.isNotEmpty) {
+          // Find best library to patch
+          final libNames = nativeLibs[arch]!.map((f) => f.name).toList();
+          final bestLib = elfPatcher.findBestLibToPatch(libNames);
+          
+          if (bestLib != null) {
+            // Find the file in the new archive
+            final libFile = nativeLibs[arch]!.firstWhere((f) => f.name == bestLib);
+            final libBytes = libFile.content as List<int>;
+            
+            addStep('Trying ELF patch on $bestLib...');
+            
+            // Patch the ELF to add frida-gadget as dependency
+            final patchedBytes = elfPatcher.patchElfToLoadGadget(Uint8List.fromList(libBytes));
+            
+            if (patchedBytes != null) {
+              // Verify the patch worked by checking if library name was added
+              final patchedStr = String.fromCharCodes(patchedBytes);
+              if (patchedStr.contains('libfrida-gadget.so')) {
+                // Remove old file and add patched version
+                newArchive.files.removeWhere((f) => f.name == bestLib);
+                final patchedFile = ArchiveFile(
+                  bestLib,
+                  patchedBytes.length,
+                  patchedBytes,
+                );
+                patchedFile.compress = false; // Native libs must be uncompressed
+                newArchive.addFile(patchedFile);
+                addStep('✓ ELF patched: $bestLib');
+                patchedAnyLib = true;
+              } else {
+                addStep('⚠ ELF patch failed verification for $bestLib');
+              }
+            } else {
+              addStep('⚠ Could not ELF patch $bestLib');
+            }
+          }
+        }
       }
       
-      // Step 6: Modify AndroidManifest to load gadget
-      addStep('Patching native library loading...');
-      // Note: The gadget will be loaded if we inject it into the main activity's native libs
-      // or by patching the app to load it via System.loadLibrary
+      // Method 2: If ELF patching didn't work, use native smali patching on Android
+      if (!patchedAnyLib && Platform.isAndroid) {
+        addStep('ELF patching unavailable, trying native smali patching...');
+        
+        try {
+          final platformService = AndroidPlatformService();
+          
+          // Write config and script to temp files for native patcher
+          final configFile = File('$workPath/gadget.config');
+          await configFile.writeAsString(configJson);
+          
+          String? scriptFile;
+          if (finalMode == modeScript && finalScriptContent != null) {
+            final sf = File('$workPath/gadget.script');
+            await sf.writeAsString(finalScriptContent);
+            scriptFile = sf.path;
+          }
+          
+          // Get the first gadget lib path
+          final gadgetLibPath = gadgetPaths.values.first;
+          
+          // Call native smali patcher
+          final smaliResult = await platformService.patchApkWithSmali(
+            inputApk: apkPath,
+            outputApk: '$workPath/smali_patched.apk',
+            gadgetLibPath: gadgetLibPath,
+            configPath: configFile.path,
+            scriptPath: scriptFile,
+          );
+          
+          if (smaliResult) {
+            addStep('✓ Native smali patching successful');
+            
+            // Use the smali-patched APK as the base and add gadget libs
+            // Read the patched APK and add our gadget files
+            final patchedBytes = await File('$workPath/smali_patched.apk').readAsBytes();
+            final patchedArchive = ZipDecoder().decodeBytes(patchedBytes);
+            
+            // Add gadget files to patched APK
+            for (final arch in archsToInject) {
+              final gadgetBytes = await File(gadgetPaths[arch]!).readAsBytes();
+              
+              final gadgetFile = ArchiveFile(
+                'lib/\$arch/libfrida-gadget.so',
+                gadgetBytes.length,
+                gadgetBytes,
+              );
+              gadgetFile.compress = false;
+              patchedArchive.addFile(gadgetFile);
+              
+              final configBytes = utf8.encode(configJson);
+              final cf = ArchiveFile(
+                'lib/\$arch/libfrida-gadget.config.so',
+                configBytes.length,
+                configBytes,
+              );
+              cf.compress = false;
+              patchedArchive.addFile(cf);
+              
+              if (finalMode == modeScript && finalScriptContent != null) {
+                final scriptBytes = utf8.encode(finalScriptContent);
+                final sf = ArchiveFile(
+                  'lib/\$arch/libfrida-script.js.so',
+                  scriptBytes.length,
+                  scriptBytes,
+                );
+                sf.compress = false;
+                patchedArchive.addFile(sf);
+              }
+            }
+            
+            // Write final APK
+            final finalBytes = ZipEncoder().encode(patchedArchive);
+            await File('$workPath/unsigned.apk').writeAsBytes(finalBytes!);
+            patchedAnyLib = true;
+          } else {
+            addStep('⚠ Native smali patching failed');
+          }
+        } catch (e) {
+          addStep('⚠ Native smali patching error: \$e');
+        }
+      }
+      
+      // Method 3: If still not patched, try Dart-based DEX patching as last resort
+      if (!patchedAnyLib) {
+        addStep('Trying Dart-based DEX patching...');
+        
+        // Find classes.dex in the archive
+        ArchiveFile? classesDex;
+        for (final file in newArchive.files) {
+          if (file.name == 'classes.dex') {
+            classesDex = file;
+            break;
+          }
+        }
+        
+        if (classesDex != null) {
+          final dexBytes = classesDex.content as List<int>;
+          final patchedDex = _patchDexToLoadGadget(Uint8List.fromList(dexBytes));
+          
+          if (patchedDex != null) {
+            newArchive.files.removeWhere((f) => f.name == 'classes.dex');
+            newArchive.addFile(ArchiveFile(
+              'classes.dex',
+              patchedDex.length,
+              patchedDex,
+            ));
+            addStep('✓ DEX patched to load gadget');
+            patchedAnyLib = true;
+          } else {
+            addStep('⚠ Dart DEX patching not available');
+          }
+        }
+      }
+      
+      if (!patchedAnyLib) {
+        addStep('⚠ WARNING: Could not patch app to load gadget!');
+        addStep('The gadget files are included but may not auto-load.');
+        addStep('You may need to manually call System.loadLibrary("frida-gadget")');
+      }
       
       // Step 7: Write modified APK
       final unsignedPath = '$workPath/unsigned.apk';
@@ -450,13 +798,20 @@ class FridaGadgetService {
   /// Sign APK with debug key or generated key
   Future<bool> _signApk(String inputPath, String outputPath) async {
     try {
-      // On Android/iOS, use pure Dart signing
-      if (Platform.isAndroid || Platform.isIOS) {
-        debugPrint('Using pure Dart APK signing...');
+      // On Android, use native signing via platform channel (most reliable)
+      if (Platform.isAndroid) {
+        debugPrint('Using native Android signing via platform channel...');
+        final platformService = AndroidPlatformService();
+        final success = await platformService.signApk(inputPath, outputPath);
+        if (success) {
+          debugPrint('APK signed successfully with native Android signing');
+          return true;
+        }
+        debugPrint('Native signing failed, trying pure Dart fallback...');
         return await _signApkPureDart(inputPath, outputPath);
       }
       
-      // Try apksigner from Android SDK on desktop
+      // On desktop, try apksigner from Android SDK
       final sdkPath = Platform.environment['ANDROID_HOME'] ?? 
                       Platform.environment['ANDROID_SDK_ROOT'] ??
                       (Platform.isWindows && Platform.environment['LOCALAPPDATA'] != null
@@ -481,17 +836,21 @@ class FridaGadgetService {
       // Create or use debug keystore
       if (!await File(keystorePath).exists()) {
         final created = await _createDebugKeystore(keystorePath);
-        if (!created) {
-          // Fall back to pure Dart signing
-          return await _signApkPureDart(inputPath, outputPath);
+        if (!created && !Platform.isAndroid) {
+          debugPrint('Failed to create keystore, falling back to pure Dart signing');
         }
       }
       
-      if (apksignerPath != null && await File(apksignerPath).exists()) {
+      // Try apksigner with v1, v2, and v3 signatures
+      if (apksignerPath != null && await File(apksignerPath).exists() && await File(keystorePath).exists()) {
+        debugPrint('Using apksigner at: $apksignerPath');
         final result = await Process.run(
           apksignerPath,
           [
             'sign',
+            '--v1-signing-enabled', 'true',
+            '--v2-signing-enabled', 'true',
+            '--v3-signing-enabled', 'true',
             '--ks', keystorePath,
             '--ks-pass', 'pass:android',
             '--ks-key-alias', 'androiddebugkey',
@@ -501,31 +860,46 @@ class FridaGadgetService {
           ],
         );
         if (result.exitCode == 0) {
+          debugPrint('APK signed successfully with apksigner (v1+v2+v3)');
           return true;
+        } else {
+          debugPrint('apksigner failed: ${result.stderr}');
         }
       }
       
-      // Fallback: try jarsigner
-      try {
-        final result = await Process.run(
-          'jarsigner',
-          [
-            '-keystore', keystorePath,
-            '-storepass', 'android',
-            '-keypass', 'android',
-            '-signedjar', outputPath,
-            inputPath,
-            'androiddebugkey',
-          ],
-        );
-        
-        if (result.exitCode == 0) {
-          return true;
+      // Fallback: try jarsigner (v1 only - may not work on Android 11+)
+      if (await File(keystorePath).exists()) {
+        try {
+          debugPrint('Trying jarsigner fallback...');
+          final result = await Process.run(
+            'jarsigner',
+            [
+              '-keystore', keystorePath,
+              '-storepass', 'android',
+              '-keypass', 'android',
+              '-signedjar', outputPath,
+              inputPath,
+              'androiddebugkey',
+            ],
+          );
+          
+          if (result.exitCode == 0) {
+            debugPrint('APK signed with jarsigner (v1 only - may not install on Android 11+)');
+            return true;
+          }
+        } catch (e) {
+          debugPrint('jarsigner failed: $e');
         }
-      } catch (_) {}
+      }
       
-      // Last resort: pure Dart signing
-      return await _signApkPureDart(inputPath, outputPath);
+      // Last resort: pure Dart v1 signing
+      debugPrint('Using pure Dart APK signing (v1 only)...');
+      final success = await _signApkPureDart(inputPath, outputPath);
+      if (success) {
+        debugPrint('WARNING: APK signed with v1 signature only. May not install on Android 11+');
+        debugPrint('For Android 11+, please re-sign with apksigner to add v2/v3 signatures.');
+      }
+      return success;
     } catch (e) {
       debugPrint('Sign error: $e');
       // Try pure Dart as last resort
@@ -533,10 +907,10 @@ class FridaGadgetService {
     }
   }
 
-  /// Pure Dart APK signing implementation (JAR signing / v1 signature)
+  /// Pure Dart APK signing implementation (JAR signing / v1 signature + v2 APK Signature Scheme)
   Future<bool> _signApkPureDart(String inputPath, String outputPath) async {
     try {
-      debugPrint('Starting pure Dart APK signing...');
+      debugPrint('Starting pure Dart APK signing with v1 + v2 signatures...');
       
       // Read the APK
       final apkBytes = await File(inputPath).readAsBytes();
@@ -574,6 +948,7 @@ class FridaGadgetService {
       final sfContent = StringBuffer();
       sfContent.writeln('Signature-Version: 1.0');
       sfContent.writeln('Created-By: DroidAnalyst');
+      sfContent.writeln('X-Android-APK-Signed: 2'); // Indicate v2 signature is present
       
       // Add manifest digest
       final manifestDigest = sha256.convert(manifestBytes);
@@ -622,11 +997,17 @@ class FridaGadgetService {
         newArchive.addFile(file);
       }
       
-      // Write signed APK
-      final zipBytes = ZipEncoder().encode(newArchive);
-      await File(outputPath).writeAsBytes(zipBytes!);
+      // Write v1 signed APK
+      final v1ZipBytes = ZipEncoder().encode(newArchive);
+      if (v1ZipBytes == null) {
+        throw Exception('Failed to encode APK');
+      }
       
-      debugPrint('Pure Dart APK signing completed successfully!');
+      // Now add APK Signature Scheme v2 block
+      final v2SignedBytes = await _addV2Signature(Uint8List.fromList(v1ZipBytes), privateKey, publicKey);
+      await File(outputPath).writeAsBytes(v2SignedBytes);
+      
+      debugPrint('Pure Dart APK signing completed with v1 + v2 signatures!');
       return true;
     } catch (e, st) {
       debugPrint('Pure Dart signing error: $e');
@@ -634,6 +1015,260 @@ class FridaGadgetService {
       return false;
     }
   }
+
+  /// Add APK Signature Scheme v2 signature block to APK
+  /// v2 signature is placed before the Central Directory and signs the entire APK
+  Future<Uint8List> _addV2Signature(Uint8List apkBytes, RSAPrivateKey privateKey, RSAPublicKey publicKey) async {
+    // Find the Central Directory (CD) and End of Central Directory (EOCD)
+    final eocdOffset = _findEOCD(apkBytes);
+    if (eocdOffset < 0) {
+      debugPrint('Could not find EOCD, returning v1 signed APK only');
+      return apkBytes;
+    }
+    
+    // Parse EOCD to find CD offset
+    final cdOffset = _getCDOffset(apkBytes, eocdOffset);
+    if (cdOffset < 0) {
+      debugPrint('Could not find CD offset, returning v1 signed APK only');
+      return apkBytes;
+    }
+    
+    // APK Signing Block goes between the ZIP entries and the Central Directory
+    // Structure: 
+    // 1. size of block (8 bytes, excluding this field)
+    // 2. sequence of ID-value pairs
+    // 3. size of block (8 bytes, same as #1)
+    // 4. magic "APK Sig Block 42" (16 bytes)
+    
+    // Create the signing block content
+    final signingBlockContent = _createV2SigningBlockContent(
+      apkBytes, cdOffset, eocdOffset, privateKey, publicKey,
+    );
+    
+    // Build complete APK with v2 signing block
+    final result = BytesBuilder();
+    
+    // Copy ZIP entries (everything before CD)
+    result.add(apkBytes.sublist(0, cdOffset));
+    
+    // Add APK Signing Block
+    result.add(signingBlockContent);
+    
+    // Copy Central Directory
+    result.add(apkBytes.sublist(cdOffset, eocdOffset));
+    
+    // Update and copy EOCD with new CD offset
+    final newCdOffset = cdOffset + signingBlockContent.length;
+    final updatedEocd = _updateEOCD(apkBytes.sublist(eocdOffset), newCdOffset);
+    result.add(updatedEocd);
+    
+    return Uint8List.fromList(result.toBytes());
+  }
+
+  /// Find End of Central Directory record
+  int _findEOCD(Uint8List bytes) {
+    // EOCD signature: 0x06054b50
+    for (int i = bytes.length - 22; i >= 0; i--) {
+      if (bytes[i] == 0x50 && bytes[i + 1] == 0x4b && 
+          bytes[i + 2] == 0x05 && bytes[i + 3] == 0x06) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  /// Get Central Directory offset from EOCD
+  int _getCDOffset(Uint8List bytes, int eocdOffset) {
+    // CD offset is at EOCD + 16 (4 bytes, little endian)
+    return bytes[eocdOffset + 16] |
+           (bytes[eocdOffset + 17] << 8) |
+           (bytes[eocdOffset + 18] << 16) |
+           (bytes[eocdOffset + 19] << 24);
+  }
+
+  /// Update EOCD with new CD offset
+  Uint8List _updateEOCD(Uint8List eocd, int newCdOffset) {
+    final result = Uint8List.fromList(eocd);
+    // Update CD offset at byte 16
+    result[16] = newCdOffset & 0xFF;
+    result[17] = (newCdOffset >> 8) & 0xFF;
+    result[18] = (newCdOffset >> 16) & 0xFF;
+    result[19] = (newCdOffset >> 24) & 0xFF;
+    return result;
+  }
+
+  /// Create APK Signature Scheme v2 signing block content
+  Uint8List _createV2SigningBlockContent(
+    Uint8List apkBytes, 
+    int cdOffset, 
+    int eocdOffset,
+    RSAPrivateKey privateKey,
+    RSAPublicKey publicKey,
+  ) {
+    // The data to sign is a concatenation of:
+    // 1. Contents of ZIP entries (from start to CD)
+    // 2. Central Directory
+    // 3. EOCD (with CD offset set to 0)
+    
+    // Create digest of sections
+    final section1 = apkBytes.sublist(0, cdOffset);
+    final section3 = apkBytes.sublist(cdOffset, eocdOffset);
+    final section4 = _updateEOCD(apkBytes.sublist(eocdOffset), 0);
+    
+    // Compute SHA-256 digests of each section
+    final digest1 = sha256.convert(section1);
+    final digest3 = sha256.convert(section3);
+    final digest4 = sha256.convert(section4);
+    
+    // Create signed data for v2 signature
+    // Length-prefixed signed data contains:
+    // - digests
+    // - certificates
+    // - additional attributes
+    final signedData = _createV2SignedData(
+      [digest1.bytes, digest3.bytes, digest4.bytes],
+      publicKey,
+    );
+    
+    // Sign the signed data
+    final signer = RSASigner(SHA256Digest(), '0609608648016503040201');
+    signer.init(true, PrivateKeyParameter<RSAPrivateKey>(privateKey));
+    final signature = signer.generateSignature(Uint8List.fromList(signedData)) as RSASignature;
+    
+    // Create signer block
+    final signerBlock = _createV2SignerBlock(signedData, signature.bytes, publicKey);
+    
+    // Create the ID-value pair for v2 signature (ID = 0x7109871a)
+    final v2SignatureId = 0x7109871a;
+    final idValuePair = _createIdValuePair(v2SignatureId, signerBlock);
+    
+    // Calculate block size
+    final blockContentSize = idValuePair.length;
+    final blockSize = blockContentSize + 8 + 16; // +8 for size field, +16 for magic
+    
+    // Build the signing block
+    final block = BytesBuilder();
+    
+    // Size of block (excluding this field itself)
+    _writeUint64LE(block, blockSize);
+    
+    // ID-value pairs
+    block.add(idValuePair);
+    
+    // Size of block again
+    _writeUint64LE(block, blockSize);
+    
+    // Magic: "APK Sig Block 42"
+    block.add(utf8.encode('APK Sig Block 42'));
+    
+    return Uint8List.fromList(block.toBytes());
+  }
+
+  /// Create signed data structure for v2 signature
+  Uint8List _createV2SignedData(List<List<int>> digests, RSAPublicKey publicKey) {
+    final builder = BytesBuilder();
+    
+    // Digests - length-prefixed sequence
+    final digestsBuilder = BytesBuilder();
+    for (final digest in digests) {
+      // Signature algorithm ID (0x0103 = RSA-PSS with SHA-256, 0x0101 = RSA-PKCS1-v1_5 with SHA-256)
+      final digestEntry = BytesBuilder();
+      _writeUint32LE(digestEntry, 0x0103); // Algorithm ID
+      _writeUint32LE(digestEntry, digest.length);
+      digestEntry.add(digest);
+      
+      _writeUint32LE(digestsBuilder, digestEntry.length);
+      digestsBuilder.add(digestEntry.toBytes());
+    }
+    _writeUint32LE(builder, digestsBuilder.length);
+    builder.add(digestsBuilder.toBytes());
+    
+    // Certificates - length-prefixed sequence
+    final cert = _createSelfSignedCertificate(publicKey, _cachedPrivateKey!);
+    final certsBuilder = BytesBuilder();
+    _writeUint32LE(certsBuilder, cert.length);
+    certsBuilder.add(cert);
+    _writeUint32LE(builder, certsBuilder.length);
+    builder.add(certsBuilder.toBytes());
+    
+    // Additional attributes - empty for now
+    _writeUint32LE(builder, 0);
+    
+    return Uint8List.fromList(builder.toBytes());
+  }
+
+  /// Create signer block for v2 signature
+  Uint8List _createV2SignerBlock(List<int> signedData, Uint8List signature, RSAPublicKey publicKey) {
+    final builder = BytesBuilder();
+    
+    // Signed data (length-prefixed)
+    _writeUint32LE(builder, signedData.length);
+    builder.add(signedData);
+    
+    // Signatures - length-prefixed sequence
+    final sigsBuilder = BytesBuilder();
+    final sigEntry = BytesBuilder();
+    _writeUint32LE(sigEntry, 0x0103); // Algorithm ID (RSA-PSS with SHA-256)
+    _writeUint32LE(sigEntry, signature.length);
+    sigEntry.add(signature);
+    _writeUint32LE(sigsBuilder, sigEntry.length);
+    sigsBuilder.add(sigEntry.toBytes());
+    _writeUint32LE(builder, sigsBuilder.length);
+    builder.add(sigsBuilder.toBytes());
+    
+    // Public key (length-prefixed)
+    final pubKeyBytes = _encodePublicKey(publicKey);
+    _writeUint32LE(builder, pubKeyBytes.length);
+    builder.add(pubKeyBytes);
+    
+    return Uint8List.fromList(builder.toBytes());
+  }
+
+  /// Encode RSA public key in SubjectPublicKeyInfo format
+  Uint8List _encodePublicKey(RSAPublicKey publicKey) {
+    return Uint8List.fromList(_asn1SequenceFromList([
+      _asn1SequenceFromList([
+        _asn1ObjectIdentifier([1, 2, 840, 113549, 1, 1, 1]), // rsaEncryption
+        _asn1Null(),
+      ]),
+      _asn1BitString(_asn1SequenceFromList([
+        _asn1Integer(publicKey.modulus!),
+        _asn1Integer(publicKey.exponent!),
+      ])),
+    ]));
+  }
+
+  /// Create ID-value pair for signing block
+  Uint8List _createIdValuePair(int id, Uint8List value) {
+    final builder = BytesBuilder();
+    // Length of ID + value
+    _writeUint64LE(builder, 4 + value.length);
+    // ID (4 bytes)
+    _writeUint32LE(builder, id);
+    // Value
+    builder.add(value);
+    return Uint8List.fromList(builder.toBytes());
+  }
+
+  void _writeUint32LE(BytesBuilder builder, int value) {
+    builder.addByte(value & 0xFF);
+    builder.addByte((value >> 8) & 0xFF);
+    builder.addByte((value >> 16) & 0xFF);
+    builder.addByte((value >> 24) & 0xFF);
+  }
+
+  void _writeUint64LE(BytesBuilder builder, int value) {
+    builder.addByte(value & 0xFF);
+    builder.addByte((value >> 8) & 0xFF);
+    builder.addByte((value >> 16) & 0xFF);
+    builder.addByte((value >> 24) & 0xFF);
+    builder.addByte((value >> 32) & 0xFF);
+    builder.addByte((value >> 40) & 0xFF);
+    builder.addByte((value >> 48) & 0xFF);
+    builder.addByte((value >> 56) & 0xFF);
+  }
+
+  RSAPrivateKey? _cachedPrivateKey;
 
   /// Generate RSA key pair for signing
   AsymmetricKeyPair<PublicKey, PrivateKey> _generateRSAKeyPair() {
@@ -648,7 +1283,9 @@ class FridaGadgetService {
         secureRandom,
       ));
 
-    return keyGen.generateKeyPair();
+    final keyPair = keyGen.generateKeyPair();
+    _cachedPrivateKey = keyPair.privateKey as RSAPrivateKey;
+    return keyPair;
   }
 
   /// Create PKCS#7 signature block
@@ -1012,6 +1649,47 @@ CONNECT MODE - Gadget connects back to your server
         
       default:
         return 'Unknown mode';
+    }
+  }
+
+  /// Patch DEX file to add System.loadLibrary("frida-gadget") call
+  /// This is a simplified approach that searches for common entry points
+  /// and injects the library load call
+  Uint8List? _patchDexToLoadGadget(Uint8List dexBytes) {
+    try {
+      debugPrint('Attempting DEX patching...');
+      
+      // DEX file structure:
+      // - Magic: "dex\n035\0" or "dex\n037\0" etc.
+      // - Header with offsets to various sections
+      // - String IDs, Type IDs, Proto IDs, Field IDs, Method IDs
+      // - Class definitions
+      // - Data section with actual code
+      
+      // Verify DEX magic
+      if (dexBytes.length < 112) {
+        debugPrint('DEX too small');
+        return null;
+      }
+      
+      final magic = String.fromCharCodes(dexBytes.sublist(0, 4));
+      if (magic != 'dex\n') {
+        debugPrint('Invalid DEX magic: $magic');
+        return null;
+      }
+      
+      // For now, we'll use a simple approach:
+      // Search for "onCreate" method references and try to find a good injection point
+      // This is a placeholder - proper DEX patching requires full DEX parsing
+      
+      debugPrint('DEX patching not fully implemented - using ELF method as primary');
+      return null;
+      
+      // TODO: Implement full DEX patching using dexlib2 or similar
+      // For now, return null to indicate failure and fall back to other methods
+    } catch (e) {
+      debugPrint('DEX patching error: $e');
+      return null;
     }
   }
 }

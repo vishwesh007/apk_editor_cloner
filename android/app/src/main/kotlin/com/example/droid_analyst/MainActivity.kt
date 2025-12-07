@@ -2,6 +2,8 @@ package com.example.droid_analyst
 
 import android.content.pm.PackageManager
 import android.content.pm.ApplicationInfo
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.app.ActivityManager
 import android.content.Context
@@ -53,6 +55,7 @@ import com.android.apksig.ApkSigner
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.example.droid_analyst/android"
     private val LOCAL_GADGET_CHANNEL = "com.droidanalyst/local_gadget"
+    private val TERMUX_CHANNEL = "com.droidanalyst/termux"
     
     // For local socket connection to gadget
     private var gadgetSocket: LocalSocket? = null
@@ -61,6 +64,11 @@ class MainActivity : FlutterActivity() {
     private var gadgetWriter: PrintWriter? = null
     private var localGadgetChannel: MethodChannel? = null
     private var isUsingTcp = false
+    
+    // Termux package names
+    private val TERMUX_PACKAGE = "com.termux"
+    private val TERMUX_API_PACKAGE = "com.termux.api"
+    private val TERMUX_RUN_COMMAND_SERVICE = "com.termux.RUN_COMMAND"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -114,6 +122,39 @@ class MainActivity : FlutterActivity() {
                         result.error("CACHE_ERROR", e.message, null)
                     }
                 }
+                "patchApkWithSmali" -> {
+                    val inputApk = call.argument<String>("inputApk")
+                    val outputApk = call.argument<String>("outputApk")
+                    val gadgetLibPath = call.argument<String>("gadgetLibPath")
+                    val targetClass = call.argument<String>("targetClass")
+                    val configPath = call.argument<String>("configPath")
+                    val scriptPath = call.argument<String>("scriptPath")
+                    
+                    if (inputApk != null && outputApk != null) {
+                        Thread {
+                            try {
+                                val success = patchApkWithSmali(
+                                    inputApk, outputApk, gadgetLibPath,
+                                    targetClass, configPath, scriptPath
+                                )
+                                runOnUiThread { result.success(success) }
+                            } catch (e: Exception) {
+                                android.util.Log.e("DroidAnalyst", "Smali patch error: ${e.message}", e)
+                                runOnUiThread { result.error("PATCH_ERROR", e.message, null) }
+                            }
+                        }.start()
+                    } else {
+                        result.error("INVALID_ARGUMENT", "inputApk and outputApk are required", null)
+                    }
+                }
+                "installApk" -> {
+                    val apkPath = call.argument<String>("apkPath")
+                    if (apkPath != null) {
+                        installApk(apkPath, result)
+                    } else {
+                        result.error("INVALID_ARGUMENT", "apkPath is required", null)
+                    }
+                }
                 else -> {
                     result.notImplemented()
                 }
@@ -164,6 +205,76 @@ class MainActivity : FlutterActivity() {
                 }
                 "getAppsWithGadget" -> {
                     result.success(getAppsWithGadget())
+                }
+                else -> {
+                    result.notImplemented()
+                }
+            }
+        }
+        
+        // Termux integration channel
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, TERMUX_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "checkTermuxInstallation" -> {
+                    result.success(checkTermuxInstallation())
+                }
+                "runCommand" -> {
+                    val command = call.argument<String>("command")
+                    val background = call.argument<Boolean>("background") ?: false
+                    if (command != null) {
+                        val success = runTermuxCommand(command, background)
+                        result.success(success)
+                    } else {
+                        result.error("INVALID_ARGUMENT", "command is required", null)
+                    }
+                }
+                "runTaskerCommand" -> {
+                    val command = call.argument<String>("command")
+                    val workingDirectory = call.argument<String>("workingDirectory")
+                    val sessionAction = call.argument<String>("sessionAction")
+                    if (command != null) {
+                        val success = runTermuxTaskerCommand(command, workingDirectory, sessionAction)
+                        result.success(success)
+                    } else {
+                        result.error("INVALID_ARGUMENT", "command is required", null)
+                    }
+                }
+                "runScript" -> {
+                    val scriptPath = call.argument<String>("scriptPath")
+                    val args = call.argument<List<String>>("args") ?: emptyList()
+                    if (scriptPath != null) {
+                        val success = runTermuxScript(scriptPath, args)
+                        result.success(success)
+                    } else {
+                        result.error("INVALID_ARGUMENT", "scriptPath is required", null)
+                    }
+                }
+                "openTermux" -> {
+                    val success = openTermux()
+                    result.success(success)
+                }
+                "createScript" -> {
+                    val name = call.argument<String>("name")
+                    val content = call.argument<String>("content")
+                    if (name != null && content != null) {
+                        val success = createTermuxScript(name, content)
+                        result.success(success)
+                    } else {
+                        result.error("INVALID_ARGUMENT", "name and content are required", null)
+                    }
+                }
+                "copyFileToTermux" -> {
+                    val sourcePath = call.argument<String>("sourcePath")
+                    val destName = call.argument<String>("destName")
+                    if (sourcePath != null && destName != null) {
+                        val success = copyFileToTermux(sourcePath, destName)
+                        result.success(success)
+                    } else {
+                        result.error("INVALID_ARGUMENT", "sourcePath and destName are required", null)
+                    }
+                }
+                "getTermuxHomePath" -> {
+                    result.success(getTermuxHomePath())
                 }
                 else -> {
                     result.notImplemented()
@@ -660,6 +771,554 @@ class MainActivity : FlutterActivity() {
         gadgetSocket = null
         gadgetTcpSocket = null
         isUsingTcp = false
+    }
+    
+    // ============ Termux Integration Methods ============
+    
+    /**
+     * Check if Termux and Termux:API are installed
+     */
+    private fun checkTermuxInstallation(): Map<String, Boolean> {
+        val pm = packageManager
+        var termuxInstalled = false
+        var termuxApiInstalled = false
+        
+        try {
+            pm.getPackageInfo(TERMUX_PACKAGE, 0)
+            termuxInstalled = true
+        } catch (e: PackageManager.NameNotFoundException) {
+            // Termux not installed
+        }
+        
+        try {
+            pm.getPackageInfo(TERMUX_API_PACKAGE, 0)
+            termuxApiInstalled = true
+        } catch (e: PackageManager.NameNotFoundException) {
+            // Termux:API not installed
+        }
+        
+        return mapOf(
+            "termux" to termuxInstalled,
+            "termux_api" to termuxApiInstalled
+        )
+    }
+    
+    /**
+     * Run a command in Termux using RUN_COMMAND intent
+     */
+    private fun runTermuxCommand(command: String, background: Boolean): Boolean {
+        return try {
+            val intent = Intent()
+            intent.setClassName(TERMUX_PACKAGE, "com.termux.app.RunCommandService")
+            intent.action = TERMUX_RUN_COMMAND_SERVICE
+            intent.putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bash")
+            intent.putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-c", command))
+            intent.putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
+            intent.putExtra("com.termux.RUN_COMMAND_BACKGROUND", background)
+            intent.putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", "0") // 0=new session, 1=current session
+            
+            startService(intent)
+            android.util.Log.i("DroidAnalyst", "Termux command sent: $command")
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("DroidAnalyst", "Failed to run Termux command: ${e.message}", e)
+            false
+        }
+    }
+    
+    /**
+     * Run a command using Termux:Tasker style intent
+     */
+    private fun runTermuxTaskerCommand(command: String, workingDirectory: String?, sessionAction: String?): Boolean {
+        return try {
+            val intent = Intent()
+            intent.setClassName(TERMUX_PACKAGE, "com.termux.app.RunCommandService")
+            intent.action = TERMUX_RUN_COMMAND_SERVICE
+            intent.putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bash")
+            intent.putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-c", command))
+            intent.putExtra("com.termux.RUN_COMMAND_WORKDIR", workingDirectory ?: "/data/data/com.termux/files/home")
+            intent.putExtra("com.termux.RUN_COMMAND_BACKGROUND", false)
+            intent.putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", sessionAction ?: "0")
+            
+            startService(intent)
+            android.util.Log.i("DroidAnalyst", "Termux Tasker command sent: $command")
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("DroidAnalyst", "Failed to run Termux Tasker command: ${e.message}", e)
+            false
+        }
+    }
+    
+    /**
+     * Run a script file in Termux
+     */
+    private fun runTermuxScript(scriptPath: String, args: List<String>): Boolean {
+        return try {
+            val intent = Intent()
+            intent.setClassName(TERMUX_PACKAGE, "com.termux.app.RunCommandService")
+            intent.action = TERMUX_RUN_COMMAND_SERVICE
+            intent.putExtra("com.termux.RUN_COMMAND_PATH", scriptPath)
+            intent.putExtra("com.termux.RUN_COMMAND_ARGUMENTS", args.toTypedArray())
+            intent.putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
+            intent.putExtra("com.termux.RUN_COMMAND_BACKGROUND", false)
+            
+            startService(intent)
+            android.util.Log.i("DroidAnalyst", "Termux script started: $scriptPath")
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("DroidAnalyst", "Failed to run Termux script: ${e.message}", e)
+            false
+        }
+    }
+    
+    /**
+     * Open Termux app
+     */
+    private fun openTermux(): Boolean {
+        return try {
+            val intent = packageManager.getLaunchIntentForPackage(TERMUX_PACKAGE)
+            if (intent != null) {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(intent)
+                true
+            } else {
+                android.util.Log.e("DroidAnalyst", "Termux launch intent not found")
+                false
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("DroidAnalyst", "Failed to open Termux: ${e.message}", e)
+            false
+        }
+    }
+    
+    /**
+     * Create a script file in Termux home directory
+     * This uses a workaround by creating the file via a command
+     */
+    private fun createTermuxScript(name: String, content: String): Boolean {
+        return try {
+            // Escape content for shell
+            val escapedContent = content
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\$", "\\\$")
+                .replace("`", "\\`")
+            
+            // Create script via echo command
+            val command = """
+                cat > '$name' << 'DROIDANALYST_EOF'
+$content
+DROIDANALYST_EOF
+                chmod +x '$name'
+            """.trimIndent()
+            
+            runTermuxCommand(command, true)
+        } catch (e: Exception) {
+            android.util.Log.e("DroidAnalyst", "Failed to create Termux script: ${e.message}", e)
+            false
+        }
+    }
+    
+    /**
+     * Copy a file to Termux home directory
+     * Uses cp command through Termux
+     */
+    private fun copyFileToTermux(sourcePath: String, destName: String): Boolean {
+        return try {
+            val command = "cp '$sourcePath' '/data/data/com.termux/files/home/$destName'"
+            runTermuxCommand(command, true)
+        } catch (e: Exception) {
+            android.util.Log.e("DroidAnalyst", "Failed to copy file to Termux: ${e.message}", e)
+            false
+        }
+    }
+    
+    /**
+     * Get Termux home path
+     */
+    private fun getTermuxHomePath(): String {
+        return "/data/data/com.termux/files/home"
+    }
+    
+    /**
+     * Patch APK using smali injection to load Frida Gadget
+     * This is the most reliable method for non-rooted devices
+     */
+    private fun patchApkWithSmali(
+        inputApk: String,
+        outputApk: String,
+        gadgetLibPath: String?,
+        targetClass: String?,
+        configPath: String?,
+        scriptPath: String?
+    ): Boolean {
+        android.util.Log.i("DroidAnalyst", "Starting smali patch: $inputApk -> $outputApk")
+        
+        try {
+            val tempDir = File(cacheDir, "smali_patch_${System.currentTimeMillis()}")
+            tempDir.mkdirs()
+            
+            // Step 1: Extract DEX files from APK
+            android.util.Log.i("DroidAnalyst", "Extracting DEX files...")
+            val inputZip = ZipFile(inputApk)
+            val dexFiles = mutableListOf<Pair<String, File>>()
+            
+            inputZip.entries().asSequence().forEach { entry ->
+                if (entry.name.endsWith(".dex")) {
+                    val dexFile = File(tempDir, entry.name)
+                    inputZip.getInputStream(entry).use { input ->
+                        dexFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    dexFiles.add(entry.name to dexFile)
+                    android.util.Log.i("DroidAnalyst", "Extracted ${entry.name}")
+                }
+            }
+            
+            if (dexFiles.isEmpty()) {
+                android.util.Log.e("DroidAnalyst", "No DEX files found in APK")
+                return false
+            }
+            
+            // Step 2: Find and patch the Application or main class
+            android.util.Log.i("DroidAnalyst", "Patching DEX to load frida-gadget...")
+            var patched = false
+            
+            for ((dexName, dexFile) in dexFiles) {
+                if (patched) break
+                
+                try {
+                    // Use dexlib2 to read and modify the DEX
+                    val dexBackedDexFile = com.android.tools.smali.dexlib2.DexFileFactory.loadDexFile(
+                        dexFile,
+                        com.android.tools.smali.dexlib2.Opcodes.forApi(21)
+                    )
+                    
+                    // Find a class to patch - prefer Application class
+                    for (classDef in dexBackedDexFile.classes) {
+                        val className = classDef.type
+                        
+                        // Look for Application subclass or specified target
+                        val isTarget = if (targetClass != null) {
+                            className.contains(targetClass.replace('.', '/'))
+                        } else {
+                            classDef.superclass == "Landroid/app/Application;" ||
+                            className.contains("Application") && 
+                            classDef.superclass?.contains("Application") == true
+                        }
+                        
+                        if (isTarget) {
+                            android.util.Log.i("DroidAnalyst", "Found target class: $className")
+                            
+                            // Patch this class's <clinit> or onCreate to load gadget
+                            val patchedDex = patchClassToLoadGadget(dexBackedDexFile, className, tempDir)
+                            if (patchedDex != null) {
+                                // Replace original DEX with patched one
+                                patchedDex.copyTo(dexFile, overwrite = true)
+                                patched = true
+                                android.util.Log.i("DroidAnalyst", "Successfully patched $className in $dexName")
+                                break
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("DroidAnalyst", "Failed to patch $dexName: ${e.message}")
+                }
+            }
+            
+            if (!patched) {
+                android.util.Log.w("DroidAnalyst", "Could not find class to patch, gadget may not load")
+            }
+            
+            // Step 3: Rebuild APK with patched DEX
+            android.util.Log.i("DroidAnalyst", "Rebuilding APK...")
+            val unsignedApk = File(tempDir, "unsigned.apk")
+            
+            ZipOutputStream(FileOutputStream(unsignedApk)).use { zipOut ->
+                // Copy all entries from original APK
+                inputZip.entries().asSequence().forEach { entry ->
+                    // Skip META-INF signature files
+                    if (entry.name.startsWith("META-INF/") && 
+                        (entry.name.endsWith(".SF") || entry.name.endsWith(".RSA") || 
+                         entry.name.endsWith(".DSA") || entry.name.endsWith(".MF"))) {
+                        return@forEach
+                    }
+                    
+                    // Use patched DEX if available
+                    val dexPair = dexFiles.find { it.first == entry.name }
+                    if (dexPair != null) {
+                        val newEntry = ZipEntry(entry.name)
+                        zipOut.putNextEntry(newEntry)
+                        dexPair.second.inputStream().use { it.copyTo(zipOut) }
+                        zipOut.closeEntry()
+                    } else {
+                        val newEntry = ZipEntry(entry.name)
+                        // Preserve compression for .so files (STORED)
+                        if (entry.name.endsWith(".so")) {
+                            newEntry.method = ZipEntry.STORED
+                            newEntry.size = entry.size
+                            newEntry.compressedSize = entry.size
+                            newEntry.crc = entry.crc
+                        }
+                        zipOut.putNextEntry(newEntry)
+                        inputZip.getInputStream(entry).use { it.copyTo(zipOut) }
+                        zipOut.closeEntry()
+                    }
+                }
+            }
+            
+            inputZip.close()
+            
+            // Step 4: Sign the APK
+            android.util.Log.i("DroidAnalyst", "Signing APK...")
+            val signResult = signApk(unsignedApk.absolutePath, outputApk)
+            
+            // Cleanup
+            tempDir.deleteRecursively()
+            
+            android.util.Log.i("DroidAnalyst", "Smali patch complete: $signResult")
+            return signResult
+            
+        } catch (e: Exception) {
+            android.util.Log.e("DroidAnalyst", "Smali patch failed: ${e.message}", e)
+            return false
+        }
+    }
+    
+    /**
+     * Patch a class to load frida-gadget in its static initializer
+     * Uses dexlib2 to rewrite the DEX file with the injected code
+     */
+    private fun patchClassToLoadGadget(
+        dexFile: com.android.tools.smali.dexlib2.iface.DexFile,
+        targetClassName: String,
+        tempDir: File
+    ): File? {
+        try {
+            android.util.Log.i("DroidAnalyst", "Patching class: $targetClassName")
+            
+            // Create a mutable copy of the DEX file
+            val rewriter = object : com.android.tools.smali.dexlib2.rewriter.DexRewriter(
+                object : com.android.tools.smali.dexlib2.rewriter.RewriterModule() {
+                    override fun getClassDefRewriter(rewriters: com.android.tools.smali.dexlib2.rewriter.Rewriters): com.android.tools.smali.dexlib2.rewriter.Rewriter<com.android.tools.smali.dexlib2.iface.ClassDef> {
+                        return com.android.tools.smali.dexlib2.rewriter.Rewriter { classDef ->
+                            if (classDef.type == targetClassName) {
+                                // Create modified class with injected static initializer
+                                createPatchedClassDef(classDef, rewriters)
+                            } else {
+                                // Use default rewriter for other classes
+                                super.getClassDefRewriter(rewriters).rewrite(classDef)
+                            }
+                        }
+                    }
+                }
+            ) {}
+            
+            val rewrittenDex = rewriter.dexFileRewriter.rewrite(dexFile)
+            
+            // Write the modified DEX
+            val outputFile = File(tempDir, "patched.dex")
+            com.android.tools.smali.dexlib2.writer.pool.DexPool.writeTo(
+                com.android.tools.smali.dexlib2.writer.io.FileDataStore(outputFile),
+                rewrittenDex
+            )
+            
+            android.util.Log.i("DroidAnalyst", "Patched DEX written to: ${outputFile.absolutePath}")
+            return outputFile
+            
+        } catch (e: Exception) {
+            android.util.Log.e("DroidAnalyst", "Failed to patch class: ${e.message}", e)
+            e.printStackTrace()
+            return null
+        }
+    }
+    
+    /**
+     * Create a patched ClassDef that loads frida-gadget in <clinit>
+     */
+    private fun createPatchedClassDef(
+        original: com.android.tools.smali.dexlib2.iface.ClassDef,
+        rewriters: com.android.tools.smali.dexlib2.rewriter.Rewriters
+    ): com.android.tools.smali.dexlib2.iface.ClassDef {
+        android.util.Log.i("DroidAnalyst", "Creating patched class def for: ${original.type}")
+        
+        // Find existing <clinit> method or prepare to add one
+        val methods = original.methods.toMutableList()
+        var clinitFound = false
+        
+        val patchedMethods = methods.map { method ->
+            if (method.name == "<clinit>") {
+                clinitFound = true
+                createPatchedClinit(method)
+            } else {
+                method
+            }
+        }.toMutableList()
+        
+        // If no <clinit> exists, create one
+        if (!clinitFound) {
+            android.util.Log.i("DroidAnalyst", "No <clinit> found, creating new one")
+            patchedMethods.add(createNewClinit(original.type))
+        }
+        
+        return com.android.tools.smali.dexlib2.immutable.ImmutableClassDef(
+            original.type,
+            original.accessFlags,
+            original.superclass,
+            original.interfaces,
+            original.sourceFile,
+            original.annotations,
+            original.fields,
+            patchedMethods
+        )
+    }
+    
+    /**
+     * Create a patched <clinit> that first loads frida-gadget
+     */
+    private fun createPatchedClinit(
+        original: com.android.tools.smali.dexlib2.iface.Method
+    ): com.android.tools.smali.dexlib2.iface.Method {
+        android.util.Log.i("DroidAnalyst", "Patching existing <clinit>")
+        
+        val originalImpl = original.implementation
+        if (originalImpl == null) {
+            return original
+        }
+        
+        // Create load gadget instructions to prepend
+        val loadGadgetInstructions = createLoadGadgetInstructions()
+        
+        // Combine: load gadget first, then original instructions
+        val newInstructions = mutableListOf<com.android.tools.smali.dexlib2.iface.instruction.Instruction>()
+        newInstructions.addAll(loadGadgetInstructions)
+        newInstructions.addAll(originalImpl.instructions)
+        
+        val newImpl = com.android.tools.smali.dexlib2.immutable.ImmutableMethodImplementation(
+            Math.max(originalImpl.registerCount, 1),
+            newInstructions,
+            originalImpl.tryBlocks,
+            originalImpl.debugItems
+        )
+        
+        return com.android.tools.smali.dexlib2.immutable.ImmutableMethod(
+            original.definingClass,
+            original.name,
+            original.parameters,
+            original.returnType,
+            original.accessFlags,
+            original.annotations,
+            original.hiddenApiRestrictions,
+            newImpl
+        )
+    }
+    
+    /**
+     * Create a new <clinit> method that loads frida-gadget
+     */
+    private fun createNewClinit(className: String): com.android.tools.smali.dexlib2.iface.Method {
+        android.util.Log.i("DroidAnalyst", "Creating new <clinit> for $className")
+        
+        val instructions = createLoadGadgetInstructions().toMutableList()
+        // Add return-void at the end
+        instructions.add(
+            com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction10x(
+                com.android.tools.smali.dexlib2.Opcode.RETURN_VOID
+            )
+        )
+        
+        val impl = com.android.tools.smali.dexlib2.immutable.ImmutableMethodImplementation(
+            1, // register count
+            instructions,
+            emptyList(),
+            emptyList()
+        )
+        
+        return com.android.tools.smali.dexlib2.immutable.ImmutableMethod(
+            className,
+            "<clinit>",
+            emptyList(),
+            "V",
+            com.android.tools.smali.dexlib2.AccessFlags.STATIC.value or 
+                com.android.tools.smali.dexlib2.AccessFlags.CONSTRUCTOR.value,
+            emptySet(),
+            emptySet(),
+            impl
+        )
+    }
+    
+    /**
+     * Create instructions for: System.loadLibrary("frida-gadget")
+     * 
+     * Equivalent smali:
+     * const-string v0, "frida-gadget"
+     * invoke-static {v0}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V
+     */
+    private fun createLoadGadgetInstructions(): List<com.android.tools.smali.dexlib2.iface.instruction.Instruction> {
+        val instructions = mutableListOf<com.android.tools.smali.dexlib2.iface.instruction.Instruction>()
+        
+        // const-string v0, "frida-gadget"
+        instructions.add(
+            com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction21c(
+                com.android.tools.smali.dexlib2.Opcode.CONST_STRING,
+                0, // register v0
+                com.android.tools.smali.dexlib2.immutable.reference.ImmutableStringReference("frida-gadget")
+            )
+        )
+        
+        // invoke-static {v0}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V
+        instructions.add(
+            com.android.tools.smali.dexlib2.immutable.instruction.ImmutableInstruction35c(
+                com.android.tools.smali.dexlib2.Opcode.INVOKE_STATIC,
+                1, // argument count
+                0, 0, 0, 0, 0, // registers (only v0 used)
+                com.android.tools.smali.dexlib2.immutable.reference.ImmutableMethodReference(
+                    "Ljava/lang/System;",
+                    "loadLibrary",
+                    listOf("Ljava/lang/String;"),
+                    "V"
+                )
+            )
+        )
+        
+        return instructions
+    }
+    
+    /**
+     * Install an APK using the system installer
+     */
+    private fun installApk(apkPath: String, result: MethodChannel.Result) {
+        try {
+            android.util.Log.i("DroidAnalyst", "Installing APK: $apkPath")
+            
+            val apkFile = File(apkPath)
+            if (!apkFile.exists()) {
+                result.error("FILE_NOT_FOUND", "APK file not found: $apkPath", null)
+                return
+            }
+            
+            val apkUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                androidx.core.content.FileProvider.getUriForFile(
+                    this,
+                    "$packageName.fileprovider",
+                    apkFile
+                )
+            } else {
+                Uri.fromFile(apkFile)
+            }
+            
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(apkUri, "application/vnd.android.package-archive")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+            }
+            
+            startActivity(intent)
+            result.success(true)
+        } catch (e: Exception) {
+            android.util.Log.e("DroidAnalyst", "Install APK error: ${e.message}", e)
+            result.error("INSTALL_ERROR", e.message, null)
+        }
     }
     
     override fun onDestroy() {

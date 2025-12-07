@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="protocolNames">
+        <item>UDP</item>
+        <item>TCP</item>
+    </string-array>
+    <string-array name="themeNames">
+        <item>zöldeskék/narancssárga</item>
+        <item>kék/narancssárga</item>
+        <item>lila/piros</item>
+        <item>borostyán/kék</item>
+        <item>narancssárga/szürke</item>
+        <item>zöld</item>
+    </string-array>
+</resources>

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:layout_width="fill_parent" android:layout_height="fill_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <LinearLayout android:orientation="horizontal" android:layout_width="fill_parent" android:layout_height="wrap_content">
+        <TextView android:textAppearance="@style/TextSmall" android:textSize="12.0sp" android:layout_gravity="center_vertical" android:id="@id/tvTime" android:layout_width="54.0dip" android:layout_height="wrap_content" />
+        <ImageView android:layout_gravity="center_vertical" android:id="@id/ivIcon" android:layout_width="24.0dip" android:layout_height="24.0dip" />
+        <TextView android:textAppearance="@style/TextSmall" android:textSize="12.0sp" android:gravity="end" android:layout_gravity="center_vertical" android:id="@id/tvUid" android:layout_width="40.0dip" android:layout_height="wrap_content" />
+        <ImageView android:layout_gravity="center_vertical" android:id="@id/ivConnection" android:layout_width="16.0dip" android:layout_height="16.0dip" android:layout_marginLeft="4.0dip" android:layout_marginStart="4.0dip" />
+        <ImageView android:layout_gravity="center_vertical" android:id="@id/ivInteractive" android:layout_width="16.0dip" android:layout_height="16.0dip" />
+        <LinearLayout android:layout_gravity="center_vertical" android:orientation="vertical" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="4.0dip" android:layout_marginStart="4.0dip">
+            <TextView android:textAppearance="@style/TextSmall" android:textSize="12.0sp" android:layout_gravity="center_vertical" android:id="@id/tvProtocol" android:layout_width="40.0dip" android:layout_height="wrap_content" />
+            <TextView android:textAppearance="@style/TextSmall" android:textSize="12.0sp" android:layout_gravity="center_vertical" android:id="@id/tvFlags" android:layout_width="40.0dip" android:layout_height="wrap_content" />
+        </LinearLayout>
+        <LinearLayout android:layout_gravity="center_vertical" android:orientation="vertical" android:layout_width="0.0dip" android:layout_height="wrap_content" android:layout_marginLeft="4.0dip" android:layout_weight="1.0" android:layout_marginStart="4.0dip">
+            <LinearLayout android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content">
+                <TextView android:textAppearance="@style/TextSmall" android:textSize="12.0sp" android:gravity="end" android:id="@id/tvSPort" android:layout_width="40.0dip" android:layout_height="wrap_content" />
+                <TextView android:textAppearance="@style/TextSmall" android:textSize="12.0sp" android:id="@id/tvSAddr" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="4.0dip" android:layout_marginStart="4.0dip" />
+            </LinearLayout>
+            <LinearLayout android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content">
+                <TextView android:textAppearance="@style/TextSmall" android:textSize="12.0sp" android:gravity="end" android:id="@id/tvDPort" android:layout_width="40.0dip" android:layout_height="wrap_content" />
+                <TextView android:textAppearance="@style/TextSmall" android:textSize="12.0sp" android:id="@id/tvDAddr" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="4.0dip" android:layout_marginStart="4.0dip" />
+            </LinearLayout>
+            <TextView android:textAppearance="@style/TextSmall" android:textSize="10.0sp" android:id="@id/tvOrganization" android:visibility="gone" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+        </LinearLayout>
+    </LinearLayout>
+    <TextView android:textAppearance="@style/TextSmall" android:textSize="12.0sp" android:id="@id/tvData" android:layout_width="fill_parent" android:layout_height="wrap_content" android:layout_marginLeft="50.0dip" android:layout_marginStart="50.0dip" />
+</LinearLayout>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="protocolNames">
+        <item>УДП</item>
+        <item>ТЦП</item>
+    </string-array>
+    <string-array name="themeNames">
+        <item>тиркизно/наранџасто</item>
+        <item>плаво/наранџасто</item>
+        <item>пурпурно/црвено</item>
+        <item>жуто/плаво</item>
+        <item>наранџасто/сиво</item>
+        <item>зелено</item>
+    </string-array>
+</resources>

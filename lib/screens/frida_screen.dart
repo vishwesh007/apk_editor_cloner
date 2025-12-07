@@ -6,6 +6,8 @@ import '../providers/device_provider.dart';
 import '../models/frida_script.dart';
 import '../widgets/code_editor.dart';
 import 'gadget_injection_screen.dart';
+import 'gadget_console_screen.dart';
+import 'local_gadget_screen.dart';
 
 class FridaScreen extends StatefulWidget {
   const FridaScreen({super.key});
@@ -19,6 +21,9 @@ class _FridaScreenState extends State<FridaScreen> {
   String? _selectedPackage;
   List<Map<String, dynamic>> _processes = [];
   bool _loadingProcesses = false;
+  
+  // Check if running on Android device
+  bool get _isAndroidDevice => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   @override
   void dispose() {
@@ -28,6 +33,11 @@ class _FridaScreenState extends State<FridaScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // On Android device, show gadget injection focused UI
+    if (_isAndroidDevice) {
+      return _buildAndroidLayout();
+    }
+    
     return Consumer2<FridaProvider, DeviceProvider>(
       builder: (context, fridaProvider, deviceProvider, child) {
         return Row(
@@ -365,6 +375,220 @@ class _FridaScreenState extends State<FridaScreen> {
               ),
             ),
           ],
+        );
+      },
+    );
+  }
+
+  /// Android-specific layout focused on Gadget Injection
+  Widget _buildAndroidLayout() {
+    return Consumer<FridaProvider>(
+      builder: (context, fridaProvider, child) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Main Action Card - Local Gadget (NO DESKTOP NEEDED)
+              Card(
+                color: const Color(0xFF00D084).withOpacity(0.15),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF00D084),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.phone_android, color: Colors.white, size: 20),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Local Analysis',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  'No desktop connection required!',
+                                  style: TextStyle(color: Colors.green, fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Inject Frida Gadget into apps and analyze them directly from this device. '
+                        'Works completely offline without any computer connection.',
+                        style: TextStyle(color: Colors.grey, fontSize: 13),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const GadgetInjectionScreen(),
+                                ),
+                              ),
+                              icon: const Icon(Icons.build, size: 18),
+                              label: const Text('Inject Gadget'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF00D084),
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const LocalGadgetScreen(),
+                                ),
+                              ),
+                              icon: const Icon(Icons.bug_report, size: 18),
+                              label: const Text('Connect'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.deepPurple,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              
+              // Remote/Desktop option (secondary)
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.wifi, color: Colors.orange),
+                  title: const Text('Network Console'),
+                  subtitle: const Text('Connect via ADB port forwarding', style: TextStyle(fontSize: 11)),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const GadgetConsoleScreen()),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // Scripts Panel
+              Card(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.code, size: 20),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Frida Scripts Library',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: fridaProvider.scripts.length,
+                      itemBuilder: (context, index) {
+                        final script = fridaProvider.scripts[index];
+                        return ListTile(
+                          leading: Text(
+                            script.category.icon,
+                            style: const TextStyle(fontSize: 20),
+                          ),
+                          title: Text(script.name),
+                          subtitle: Text(
+                            script.description,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                          trailing: script.isBuiltIn
+                              ? const Chip(
+                                  label: Text('Built-in', style: TextStyle(fontSize: 10)),
+                                  padding: EdgeInsets.zero,
+                                  visualDensity: VisualDensity.compact,
+                                )
+                              : null,
+                          onTap: () {
+                            showDialog(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: Text(script.name),
+                                content: SingleChildScrollView(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(script.description),
+                                      const SizedBox(height: 16),
+                                      Container(
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black,
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        constraints: const BoxConstraints(maxHeight: 300),
+                                        child: SingleChildScrollView(
+                                          child: SelectableText(
+                                            script.code,
+                                            style: const TextStyle(
+                                              fontFamily: 'monospace',
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text('Close'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         );
       },
     );
