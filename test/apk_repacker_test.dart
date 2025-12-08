@@ -7,7 +7,7 @@ import 'package:droid_analyst/services/apk_tool_service.dart';
 import 'package:droid_analyst/providers/device_provider.dart';
 
 /// Comprehensive test suite for APK Repacker functionality
-/// Tests all features: decompile, build, edit, file operations
+/// Tests all features: decompile, build, edit, file operations, signing
 void main() {
   group('APK Tool Service Tests', () {
     late ApkToolService apkToolService;
@@ -322,4 +322,123 @@ version: '2.2.0'
       await dir.delete(recursive: true);
     }
   }
+}
+
+/// Test suite for APK signing functionality
+void testApkSigning() {
+  group('APK Signing Tests', () {
+    late ApkToolService apkToolService;
+
+    setUp(() {
+      apkToolService = ApkToolService();
+    });
+
+    test('signApkWithTestKey method exists', () {
+      expect(apkToolService.signApkWithTestKey, isNotNull);
+    });
+
+    test('verifyApkSignature method exists', () {
+      expect(apkToolService.verifyApkSignature, isNotNull);
+    });
+  });
+
+  group('ApkSignatureInfo Model Tests', () {
+    test('fromMap creates correct object with all schemes', () {
+      final map = {
+        'isValid': true,
+        'v1SchemeSignerName': 'CERT',
+        'v2Verified': true,
+        'v3Verified': true,
+        'v4Verified': false,
+        'errors': [],
+        'warnings': ['Test warning'],
+      };
+
+      final info = ApkSignatureInfo.fromMap(map);
+
+      expect(info.isValid, isTrue);
+      expect(info.v1SchemeSignerName, equals('CERT'));
+      expect(info.v2Verified, isTrue);
+      expect(info.v3Verified, isTrue);
+      expect(info.v4Verified, isFalse);
+      expect(info.errors, isEmpty);
+      expect(info.warnings.length, equals(1));
+    });
+
+    test('fromMap handles null/missing values', () {
+      final map = <String, dynamic>{};
+
+      final info = ApkSignatureInfo.fromMap(map);
+
+      expect(info.isValid, isFalse);
+      expect(info.v1SchemeSignerName, isNull);
+      expect(info.v2Verified, isFalse);
+      expect(info.v3Verified, isFalse);
+      expect(info.v4Verified, isFalse);
+      expect(info.errors, isEmpty);
+      expect(info.warnings, isEmpty);
+    });
+
+    test('summary returns correct string for valid v1+v2 signature', () {
+      final info = ApkSignatureInfo(
+        isValid: true,
+        v1SchemeSignerName: 'CERT',
+        v2Verified: true,
+        v3Verified: false,
+        v4Verified: false,
+      );
+
+      expect(info.summary, equals('Valid signature (v1, v2)'));
+    });
+
+    test('summary returns correct string for invalid signature', () {
+      final info = ApkSignatureInfo(
+        isValid: false,
+        errors: ['Invalid signature', 'Certificate expired'],
+      );
+
+      expect(info.summary, contains('Invalid signature'));
+      expect(info.summary, contains('Certificate expired'));
+    });
+
+    test('hasModernSignature returns true for v2+', () {
+      final infoV2 = ApkSignatureInfo(isValid: true, v2Verified: true);
+      final infoV3 = ApkSignatureInfo(isValid: true, v3Verified: true);
+      final infoV4 = ApkSignatureInfo(isValid: true, v4Verified: true);
+      final infoV1Only = ApkSignatureInfo(isValid: true, v1SchemeSignerName: 'CERT');
+
+      expect(infoV2.hasModernSignature, isTrue);
+      expect(infoV3.hasModernSignature, isTrue);
+      expect(infoV4.hasModernSignature, isTrue);
+      expect(infoV1Only.hasModernSignature, isFalse);
+    });
+
+    test('summary lists all valid signature schemes', () {
+      final info = ApkSignatureInfo(
+        isValid: true,
+        v1SchemeSignerName: 'CERT',
+        v2Verified: true,
+        v3Verified: true,
+        v4Verified: true,
+      );
+
+      final summary = info.summary;
+      expect(summary, contains('v1'));
+      expect(summary, contains('v2'));
+      expect(summary, contains('v3'));
+      expect(summary, contains('v4'));
+    });
+
+    test('handles warnings without errors', () {
+      final info = ApkSignatureInfo(
+        isValid: true,
+        v2Verified: true,
+        warnings: ['Warning 1', 'Warning 2'],
+      );
+
+      expect(info.isValid, isTrue);
+      expect(info.warnings.length, equals(2));
+      expect(info.errors, isEmpty);
+    });
+  });
 }
