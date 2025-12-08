@@ -2,6 +2,9 @@
 
 A Flutter-based Android malware analysis dashboard for security researchers. This tool helps analyze Android applications through static analysis and dynamic instrumentation using Frida on **controlled devices you own**.
 
+## Release
+This repository uses Semantic Versioning and GitHub Releases. The latest packaged release is **v2.2.0** (2025-12-08), which includes a new APK Repacker feature (decompile/build) and performance improvements.
+
 ![DroidAnalyst](https://img.shields.io/badge/Platform-Android%20%7C%20Windows%20%7C%20macOS%20%7C%20Linux-blue)
 ![Flutter](https://img.shields.io/badge/Flutter-3.0+-02569B)
 ![License](https://img.shields.io/badge/License-MIT-green)
