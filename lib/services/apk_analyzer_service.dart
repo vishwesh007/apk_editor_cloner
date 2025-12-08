@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, compute;
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import '../models/apk_info.dart';
@@ -22,7 +22,8 @@ class ApkAnalyzerService {
 
     try {
       final bytes = await file.readAsBytes();
-      final archive = ZipDecoder().decodeBytes(bytes);
+      // Use compute for heavy archive decoding
+      final archive = await compute(_decodeArchive, bytes);
 
       String packageName = '';
       String appName = '';
@@ -110,6 +111,11 @@ class ApkAnalyzerService {
       print('Error analyzing APK: $e');
       return null;
     }
+  }
+  
+  /// Decode archive in isolate to avoid UI jank
+  static Archive _decodeArchive(List<int> bytes) {
+    return ZipDecoder().decodeBytes(bytes);
   }
 
   Future<Map<String, String>?> _parseManifestWithAapt(String apkPath) async {

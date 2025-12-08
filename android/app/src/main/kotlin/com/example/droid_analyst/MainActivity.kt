@@ -69,8 +69,15 @@ class MainActivity : FlutterActivity() {
     private val TERMUX_PACKAGE = "com.termux"
     private val TERMUX_API_PACKAGE = "com.termux.api"
     private val TERMUX_RUN_COMMAND_SERVICE = "com.termux.RUN_COMMAND"
+    
+    // APK Tool Service
+    private lateinit var apkToolService: ApkToolService
+    private val APK_TOOL_CHANNEL = "com.droidanalyst/apktool"
+    private var apkToolChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        // Initialize APK Tool Service
+        apkToolService = ApkToolService(applicationContext)
         super.configureFlutterEngine(flutterEngine)
         
         // Main channel for package/device operations
@@ -275,6 +282,170 @@ class MainActivity : FlutterActivity() {
                 }
                 "getTermuxHomePath" -> {
                     result.success(getTermuxHomePath())
+                }
+                else -> {
+                    result.notImplemented()
+                }
+            }
+        }
+        
+        // APK Tool channel for decompile/build operations
+        apkToolChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, APK_TOOL_CHANNEL)
+        apkToolChannel?.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "decodeApk" -> {
+                    val apkPath = call.argument<String>("apkPath")
+                    val outputDir = call.argument<String>("outputDir")
+                    val decodeSources = call.argument<Boolean>("decodeSources") ?: true
+                    val decodeResources = call.argument<Boolean>("decodeResources") ?: true
+                    
+                    if (apkPath != null && outputDir != null) {
+                        Thread {
+                            try {
+                                val callback = object : ApkToolService.ProgressCallback {
+                                    override fun onProgress(message: String, progress: Int) {
+                                        runOnUiThread {
+                                            apkToolChannel?.invokeMethod("onProgress", mapOf(
+                                                "message" to message,
+                                                "progress" to progress
+                                            ))
+                                        }
+                                    }
+                                    override fun onError(message: String) {
+                                        runOnUiThread {
+                                            apkToolChannel?.invokeMethod("onError", mapOf("message" to message))
+                                        }
+                                    }
+                                    override fun onComplete(outputPath: String) {
+                                        runOnUiThread {
+                                            apkToolChannel?.invokeMethod("onComplete", mapOf("outputPath" to outputPath))
+                                        }
+                                    }
+                                }
+                                
+                                val success = apkToolService.decodeApk(
+                                    apkPath, outputDir, decodeSources, decodeResources, callback
+                                )
+                                runOnUiThread { result.success(success) }
+                            } catch (e: Exception) {
+                                android.util.Log.e("DroidAnalyst", "Decode error: ${e.message}", e)
+                                runOnUiThread { result.error("DECODE_ERROR", e.message, null) }
+                            }
+                        }.start()
+                    } else {
+                        result.error("INVALID_ARGUMENT", "apkPath and outputDir are required", null)
+                    }
+                }
+                "buildApk" -> {
+                    val sourceDir = call.argument<String>("sourceDir")
+                    val outputApk = call.argument<String>("outputApk")
+                    val signApk = call.argument<Boolean>("signApk") ?: true
+                    
+                    if (sourceDir != null && outputApk != null) {
+                        Thread {
+                            try {
+                                val callback = object : ApkToolService.ProgressCallback {
+                                    override fun onProgress(message: String, progress: Int) {
+                                        runOnUiThread {
+                                            apkToolChannel?.invokeMethod("onProgress", mapOf(
+                                                "message" to message,
+                                                "progress" to progress
+                                            ))
+                                        }
+                                    }
+                                    override fun onError(message: String) {
+                                        runOnUiThread {
+                                            apkToolChannel?.invokeMethod("onError", mapOf("message" to message))
+                                        }
+                                    }
+                                    override fun onComplete(outputPath: String) {
+                                        runOnUiThread {
+                                            apkToolChannel?.invokeMethod("onComplete", mapOf("outputPath" to outputPath))
+                                        }
+                                    }
+                                }
+                                
+                                val success = apkToolService.buildApk(
+                                    sourceDir, outputApk, signApk, callback
+                                )
+                                runOnUiThread { result.success(success) }
+                            } catch (e: Exception) {
+                                android.util.Log.e("DroidAnalyst", "Build error: ${e.message}", e)
+                                runOnUiThread { result.error("BUILD_ERROR", e.message, null) }
+                            }
+                        }.start()
+                    } else {
+                        result.error("INVALID_ARGUMENT", "sourceDir and outputApk are required", null)
+                    }
+                }
+                "listDecompiledFiles" -> {
+                    val sourceDir = call.argument<String>("sourceDir")
+                    if (sourceDir != null) {
+                        Thread {
+                            try {
+                                val files = apkToolService.listDecompiledFiles(sourceDir)
+                                val jsonArray = org.json.JSONArray()
+                                files.forEach { file ->
+                                    val obj = org.json.JSONObject()
+                                    file.forEach { (k, v) -> obj.put(k, v) }
+                                    jsonArray.put(obj)
+                                }
+                                runOnUiThread { result.success(jsonArray.toString()) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("LIST_ERROR", e.message, null) }
+                            }
+                        }.start()
+                    } else {
+                        result.error("INVALID_ARGUMENT", "sourceDir is required", null)
+                    }
+                }
+                "readDecompiledFile" -> {
+                    val sourceDir = call.argument<String>("sourceDir")
+                    val filePath = call.argument<String>("filePath")
+                    if (sourceDir != null && filePath != null) {
+                        val content = apkToolService.readDecompiledFile(sourceDir, filePath)
+                        result.success(content)
+                    } else {
+                        result.error("INVALID_ARGUMENT", "sourceDir and filePath are required", null)
+                    }
+                }
+                "writeDecompiledFile" -> {
+                    val sourceDir = call.argument<String>("sourceDir")
+                    val filePath = call.argument<String>("filePath")
+                    val content = call.argument<String>("content")
+                    if (sourceDir != null && filePath != null && content != null) {
+                        val success = apkToolService.writeDecompiledFile(sourceDir, filePath, content)
+                        result.success(success)
+                    } else {
+                        result.error("INVALID_ARGUMENT", "sourceDir, filePath and content are required", null)
+                    }
+                }
+                "getApkInfo" -> {
+                    val apkPath = call.argument<String>("apkPath")
+                    if (apkPath != null) {
+                        Thread {
+                            try {
+                                val info = apkToolService.getApkInfo(apkPath)
+                                if (info != null) {
+                                    val json = org.json.JSONObject()
+                                    info.forEach { (k, v) ->
+                                        if (v is List<*>) {
+                                            json.put(k, org.json.JSONArray(v))
+                                        } else {
+                                            json.put(k, v)
+                                        }
+                                    }
+                                    runOnUiThread { result.success(json.toString()) }
+                                } else {
+                                    runOnUiThread { result.success(null) }
+                                }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("INFO_ERROR", e.message, null) }
+                            }
+                        }.start()
+                    } else {
+                        result.error("INVALID_ARGUMENT", "apkPath is required", null)
+                    }
                 }
                 else -> {
                     result.notImplemented()

@@ -38,6 +38,19 @@ class AndroidPlatformService {
       return [];
     }
   }
+  
+  /// Get raw JSON string of installed packages (for isolate processing)
+  Future<String> getInstalledPackagesRaw() async {
+    if (!isAndroid) return '[]';
+    
+    try {
+      final String result = await platform.invokeMethod('getInstalledPackages');
+      return result;
+    } on PlatformException catch (e) {
+      print('[AndroidPlatformService] Failed to get installed packages: ${e.message}');
+      return '[]';
+    }
+  }
 
   /// Get running processes (limited on newer Android)
   Future<List<RunningProcess>> getRunningProcesses() async {

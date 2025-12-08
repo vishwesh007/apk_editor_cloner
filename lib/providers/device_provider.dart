@@ -1,17 +1,26 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../models/device.dart';
 import '../services/adb_service.dart';
+import '../services/android_platform_service.dart';
 
 class DeviceProvider extends ChangeNotifier {
   AdbService? _adbService;
   AdbService get adbService => _adbService ??= AdbService();
+  
+  final _platformService = AndroidPlatformService();
 
   List<AndroidDevice> _devices = [];
   AndroidDevice? _selectedDevice;
   bool _isLoading = false;
   String? _error;
   Timer? _refreshTimer;
+  
+  // Installed apps cache for Android
+  List<Map<String, dynamic>> _installedApps = [];
+  bool _isLoadingApps = false;
+  DateTime? _appsLastLoaded;
 
   List<AndroidDevice> get devices => _devices;
   AndroidDevice? get selectedDevice => _selectedDevice;
@@ -19,6 +28,10 @@ class DeviceProvider extends ChangeNotifier {
   String? get error => _error;
   bool get hasConnectedDevice =>
       _selectedDevice?.status == DeviceStatus.connected;
+  
+  // Installed apps getters
+  List<Map<String, dynamic>> get installedApps => _installedApps;
+  bool get isLoadingApps => _isLoadingApps;
 
   DeviceProvider() {
     // Only start auto-refresh on non-web platforms
@@ -140,5 +153,37 @@ class DeviceProvider extends ChangeNotifier {
   void dispose() {
     _refreshTimer?.cancel();
     super.dispose();
+  }
+  
+  /// Load installed apps using isolate for better performance
+  Future<void> loadInstalledApps({bool forceRefresh = false}) async {
+    // Return cached data if available and fresh (< 30 seconds)
+    if (!forceRefresh && 
+        _installedApps.isNotEmpty && 
+        _appsLastLoaded != null &&
+        DateTime.now().difference(_appsLastLoaded!).inSeconds < 30) {
+      return;
+    }
+    
+    _isLoadingApps = true;
+    notifyListeners();
+    
+    try {
+      // Use compute to parse JSON in isolate
+      final apps = await _platformService.getInstalledPackagesRaw();
+      _installedApps = await compute(_parseAppsInIsolate, apps);
+      _appsLastLoaded = DateTime.now();
+    } catch (e) {
+      debugPrint('Failed to load apps: $e');
+    }
+    
+    _isLoadingApps = false;
+    notifyListeners();
+  }
+  
+  /// Parse apps JSON in isolate to avoid UI jank
+  static List<Map<String, dynamic>> _parseAppsInIsolate(String jsonString) {
+    final List<dynamic> parsed = jsonDecode(jsonString);
+    return parsed.cast<Map<String, dynamic>>();
   }
 }

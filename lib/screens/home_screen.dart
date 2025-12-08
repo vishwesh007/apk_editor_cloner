@@ -7,6 +7,7 @@ import 'events_screen.dart';
 import 'reports_screen.dart';
 import 'installed_apps_screen.dart';
 import 'termux_screen.dart';
+import 'apk_repacker_screen.dart';
 import '../widgets/status_bar.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -35,6 +36,11 @@ class _HomeScreenState extends State<HomeScreen> {
           icon: Icons.search,
           label: 'Analyze',
           screen: const ApkAnalysisScreen(),
+        ),
+        NavigationItem(
+          icon: Icons.build,
+          label: 'Repacker',
+          screen: const ApkRepackerScreen(),
         ),
         NavigationItem(
           icon: Icons.bug_report,
