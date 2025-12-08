@@ -121,7 +121,7 @@ class ElfPatcherService {
     final numDynEntries = dynamicSize! ~/ dynamicEntrySize;
     
     for (int i = 0; i < numDynEntries; i++) {
-      final entryOffset = dynamicOffset! + i * dynamicEntrySize;
+      final entryOffset = dynamicOffset + i * dynamicEntrySize;
       final dTag = data.getInt64(entryOffset, Endian.little);
       final dVal = data.getUint64(entryOffset + 8, Endian.little);
       
@@ -167,7 +167,7 @@ class ElfPatcherService {
         final pVaddr = data.getUint64(phdrOffset + 16, Endian.little).toInt();
         final pFilesz = data.getUint64(phdrOffset + 32, Endian.little).toInt();
         
-        if (strtabOffset! >= pVaddr && strtabOffset < pVaddr + pFilesz) {
+        if (strtabOffset >= pVaddr && strtabOffset < pVaddr + pFilesz) {
           strtabFileOffset = pOffset + (strtabOffset - pVaddr);
           debugPrint('STRTAB file offset: $strtabFileOffset');
           break;
@@ -230,7 +230,7 @@ class ElfPatcherService {
       
       // Update STRSZ
       for (int i = 0; i < numDynEntries; i++) {
-        final entryOffset = dynamicOffset! + i * dynamicEntrySize;
+        final entryOffset = dynamicOffset + i * dynamicEntrySize;
         final dTag = data.getInt64(entryOffset, Endian.little);
         if (dTag == DT_STRSZ) {
           resultData.setUint64(entryOffset + 8, strtabSize + gadgetNameBytes.length, Endian.little);
@@ -317,7 +317,7 @@ class ElfPatcherService {
     final numDynEntries = dynamicSize! ~/ dynamicEntrySize;
     
     for (int i = 0; i < numDynEntries; i++) {
-      final entryOffset = dynamicOffset! + i * dynamicEntrySize;
+      final entryOffset = dynamicOffset + i * dynamicEntrySize;
       final dTag = data.getInt32(entryOffset, Endian.little);
       final dVal = data.getUint32(entryOffset + 4, Endian.little);
       
@@ -403,7 +403,7 @@ class ElfPatcherService {
       
       // Update STRSZ
       for (int i = 0; i < numDynEntries; i++) {
-        final entryOffset = dynamicOffset! + i * dynamicEntrySize;
+        final entryOffset = dynamicOffset + i * dynamicEntrySize;
         final dTag = data.getInt32(entryOffset, Endian.little);
         if (dTag == DT_STRSZ) {
           resultData.setUint32(entryOffset + 4, strtabSize + gadgetNameBytes.length, Endian.little);

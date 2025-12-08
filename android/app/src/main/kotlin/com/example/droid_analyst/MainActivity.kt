@@ -420,33 +420,6 @@ class MainActivity : FlutterActivity() {
                         result.error("INVALID_ARGUMENT", "sourceDir, filePath and content are required", null)
                     }
                 }
-                "getApkInfo" -> {
-                    val apkPath = call.argument<String>("apkPath")
-                    if (apkPath != null) {
-                        Thread {
-                            try {
-                                val info = apkToolService.getApkInfo(apkPath)
-                                if (info != null) {
-                                    val json = org.json.JSONObject()
-                                    info.forEach { (k, v) ->
-                                        if (v is List<*>) {
-                                            json.put(k, org.json.JSONArray(v))
-                                        } else {
-                                            json.put(k, v)
-                                        }
-                                    }
-                                    runOnUiThread { result.success(json.toString()) }
-                                } else {
-                                    runOnUiThread { result.success(null) }
-                                }
-                            } catch (e: Exception) {
-                                runOnUiThread { result.error("INFO_ERROR", e.message, null) }
-                            }
-                        }.start()
-                    } else {
-                        result.error("INVALID_ARGUMENT", "apkPath is required", null)
-                    }
-                }
                 else -> {
                     result.notImplemented()
                 }

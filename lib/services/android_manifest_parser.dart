@@ -56,8 +56,8 @@ class AndroidManifestParser {
     try {
       // Read header
       final type = _readUint16();
-      final headerSize = _readUint16();
-      final size = _readUint32();
+      _readUint16(); // headerSize
+      _readUint32(); // size
 
       if (type != RES_XML_TYPE) {
         // Not a valid AXML file
@@ -132,8 +132,8 @@ class AndroidManifestParser {
     final stringCount = _readUint32();
     final styleCount = _readUint32();
     final flags = _readUint32();
-    final stringsStart = _readUint32();
-    final stylesStart = _readUint32();
+    _readUint32(); // stringsStart
+    _readUint32(); // stylesStart
 
     final isUtf8 = (flags & (1 << 8)) != 0;
 
@@ -196,27 +196,27 @@ class AndroidManifestParser {
   }
 
   void _parseStartElement(int headerSize) {
-    final lineNumber = _readUint32();
-    final comment = _readUint32();
-    final ns = _readUint32();
+    _readUint32(); // lineNumber
+    _readUint32(); // comment
+    _readUint32(); // ns
     final name = _readUint32();
-    final attrStart = _readUint16();
-    final attrSize = _readUint16();
+    _readUint16(); // attrStart
+    _readUint16(); // attrSize
     final attrCount = _readUint16();
-    final idIndex = _readUint16();
-    final classIndex = _readUint16();
-    final styleIndex = _readUint16();
+    _readUint16(); // idIndex
+    _readUint16(); // classIndex
+    _readUint16(); // styleIndex
 
     final elementName = _getString(name);
     
     // Parse attributes
     final attributes = <String, String>{};
     for (var i = 0; i < attrCount; i++) {
-      final attrNs = _readUint32();
+      _readUint32(); // attrNs
       final attrName = _readUint32();
       final attrRawValue = _readUint32();
-      final attrTypeSize = _readUint16();
-      final attrRes0 = _readUint8();
+      _readUint16(); // attrTypeSize
+      _readUint8(); // attrRes0
       final attrDataType = _readUint8();
       final attrData = _readUint32();
 

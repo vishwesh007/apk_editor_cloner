@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/frida_script.dart' as frida;
 import '../services/frida_gadget_service.dart';
-import '../services/adb_service.dart';
 
 /// User Script Console - Create, edit, save, and execute Frida scripts
 class ScriptConsoleScreen extends StatefulWidget {
@@ -27,10 +26,8 @@ class _ScriptConsoleScreenState extends State<ScriptConsoleScreen> {
   final _nameController = TextEditingController();
   final _outputController = ScrollController();
   final _gadgetService = FridaGadgetService();
-  final _adbService = AdbService();
   
   List<frida.FridaScript> _userScripts = [];
-  frida.FridaScript? _selectedScript;
   bool _isExecuting = false;
   bool _isInjecting = false;
   final _output = <String>[];
@@ -318,7 +315,6 @@ Java.perform(function() {
   void _editScript(frida.FridaScript script) {
     _nameController.text = script.name;
     _codeController.text = script.code;
-    _selectedScript = script;
     
     showDialog(
       context: context,

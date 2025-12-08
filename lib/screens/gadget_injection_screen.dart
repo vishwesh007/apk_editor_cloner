@@ -1,9 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 import '../services/frida_gadget_service.dart';
-import '../services/apk_patcher_service.dart';
 import '../services/android_platform_service.dart';
 
 /// Screen for injecting Frida Gadget into APKs for non-rooted analysis
@@ -18,7 +16,6 @@ class GadgetInjectionScreen extends StatefulWidget {
 
 class _GadgetInjectionScreenState extends State<GadgetInjectionScreen> {
   final _gadgetService = FridaGadgetService();
-  final _patcherService = ApkPatcherService();
   final _platformService = AndroidPlatformService();
   
   final _apkPathController = TextEditingController();
@@ -30,7 +27,6 @@ class _GadgetInjectionScreenState extends State<GadgetInjectionScreen> {
   bool _showToast = true; // Default to true as per request
   bool _isProcessing = false;
   List<String> _logs = [];
-  GadgetInjectionResult? _result;
   
   // Architecture selection
   final Map<String, bool> _selectedArchs = {
@@ -94,7 +90,6 @@ class _GadgetInjectionScreenState extends State<GadgetInjectionScreen> {
     setState(() {
       _isProcessing = true;
       _logs.clear();
-      _result = null;
     });
 
     try {
@@ -128,7 +123,6 @@ class _GadgetInjectionScreenState extends State<GadgetInjectionScreen> {
       }
 
       setState(() {
-        _result = result;
         _isProcessing = false;
       });
 

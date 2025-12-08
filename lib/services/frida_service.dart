@@ -31,7 +31,6 @@ class FridaService {
 
   bool _isAttached = false;
   String? _currentPackage;
-  String? _currentDevice;
 
   bool get isAttached => _isAttached;
   String? get currentPackage => _currentPackage;
@@ -73,7 +72,6 @@ class FridaService {
     }
 
     try {
-      _currentDevice = deviceId;
       _currentPackage = packageName;
 
       // Create temp file for script
@@ -127,7 +125,6 @@ class FridaService {
     }
 
     try {
-      _currentDevice = deviceId;
       _currentPackage = packageName;
 
       // Create temp file for script
@@ -257,7 +254,6 @@ class FridaService {
     }
     _isAttached = false;
     _currentPackage = null;
-    _currentDevice = null;
     _logController.add('Detached from process');
   }
 

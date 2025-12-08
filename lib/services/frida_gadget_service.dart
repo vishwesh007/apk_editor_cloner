@@ -6,7 +6,6 @@ import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:pointycastle/export.dart';
 import 'android_platform_service.dart';
 import 'elf_patcher_service.dart';
@@ -1133,7 +1132,7 @@ console.log('[FRIDA-TOAST] Script initialization complete');
     // Sign the signed data
     final signer = RSASigner(SHA256Digest(), '0609608648016503040201');
     signer.init(true, PrivateKeyParameter<RSAPrivateKey>(privateKey));
-    final signature = signer.generateSignature(Uint8List.fromList(signedData)) as RSASignature;
+    final signature = signer.generateSignature(Uint8List.fromList(signedData));
     
     // Create signer block
     final signerBlock = _createV2SignerBlock(signedData, signature.bytes, publicKey);
@@ -1294,7 +1293,7 @@ console.log('[FRIDA-TOAST] Script initialization complete');
     final signer = RSASigner(SHA256Digest(), '0609608648016503040201');
     signer.init(true, PrivateKeyParameter<RSAPrivateKey>(privateKey));
     
-    final signature = signer.generateSignature(Uint8List.fromList(data)) as RSASignature;
+    final signature = signer.generateSignature(Uint8List.fromList(data));
     
     // Create a self-signed certificate
     final cert = _createSelfSignedCertificate(publicKey, privateKey);
@@ -1311,7 +1310,7 @@ console.log('[FRIDA-TOAST] Script initialization complete');
     // Sign the TBS certificate
     final signer = RSASigner(SHA256Digest(), '0609608648016503040201');
     signer.init(true, PrivateKeyParameter<RSAPrivateKey>(privateKey));
-    final signature = signer.generateSignature(Uint8List.fromList(tbsCertificate)) as RSASignature;
+    final signature = signer.generateSignature(Uint8List.fromList(tbsCertificate));
     
     // Build the full certificate
     return _buildCertificate(tbsCertificate, signature.bytes);
@@ -1602,7 +1601,7 @@ console.log('[FRIDA-TOAST] Script initialization complete');
   /// Instructions for using gadget-injected APK
   String getUsageInstructions(String mode, {int port = 27042}) {
     switch (mode) {
-      case modeListen:
+      case 'listen':
         return '''
 LISTEN MODE - The gadget waits for connection
 
@@ -1621,7 +1620,7 @@ LISTEN MODE - The gadget waits for connection
    frida -H 127.0.0.1:$port -p <pid>
 ''';
         
-      case modeScript:
+      case 'script':
         return '''
 SCRIPT MODE - Embedded script runs automatically
 
@@ -1634,7 +1633,7 @@ SCRIPT MODE - Embedded script runs automatically
    adb logcat -s Frida:*
 ''';
         
-      case modeConnect:
+      case 'connect':
         return '''
 CONNECT MODE - Gadget connects back to your server
 

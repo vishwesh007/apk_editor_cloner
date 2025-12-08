@@ -16,7 +16,6 @@ class ApkAnalysisScreen extends StatefulWidget {
 
 class _ApkAnalysisScreenState extends State<ApkAnalysisScreen> {
   Map<String, String>? _hashes;
-  Map<String, String>? _signatureInfo;
 
   @override
   Widget build(BuildContext context) {

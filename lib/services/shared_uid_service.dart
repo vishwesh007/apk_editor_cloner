@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/services.dart';
 
 /// Service for shared UID-based communication with injected apps

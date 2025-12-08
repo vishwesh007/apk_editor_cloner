@@ -303,7 +303,6 @@ $loadGadgetSmali
       String? mainActivity;
       
       // Find application class
-      final appPattern = RegExp(r'android:name="([^"]+)"[^>]*>?\s*(?:</application>|<)', dotAll: true);
       final appTagPattern = RegExp(r'<application[^>]*android:name="([^"]+)"', dotAll: true);
       
       final appMatch = appTagPattern.firstMatch(content);
