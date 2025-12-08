@@ -420,6 +420,200 @@ class MainActivity : FlutterActivity() {
                         result.error("INVALID_ARGUMENT", "sourceDir, filePath and content are required", null)
                     }
                 }
+                "signApk" -> {
+                    val inputApk = call.argument<String>("inputApk")
+                    val outputApk = call.argument<String>("outputApk")
+                    val minSdkVersion = call.argument<Int>("minSdkVersion") ?: 21
+                    val enableV1 = call.argument<Boolean>("enableV1") ?: true
+                    val enableV2 = call.argument<Boolean>("enableV2") ?: true
+                    val enableV3 = call.argument<Boolean>("enableV3") ?: false
+                    
+                    if (inputApk != null && outputApk != null) {
+                        Thread {
+                            try {
+                                val callback = object : ApkToolService.ProgressCallback {
+                                    override fun onProgress(message: String, progress: Int) {
+                                        runOnUiThread {
+                                            apkToolChannel?.invokeMethod("onProgress", mapOf(
+                                                "message" to message,
+                                                "progress" to progress
+                                            ))
+                                        }
+                                    }
+                                    override fun onError(message: String) {
+                                        runOnUiThread {
+                                            apkToolChannel?.invokeMethod("onError", mapOf("message" to message))
+                                        }
+                                    }
+                                    override fun onComplete(outputPath: String) {
+                                        runOnUiThread {
+                                            apkToolChannel?.invokeMethod("onComplete", mapOf("outputPath" to outputPath))
+                                        }
+                                    }
+                                }
+                                
+                                val success = apkToolService.signApk(
+                                    inputApk, outputApk, minSdkVersion, enableV1, enableV2, enableV3, callback
+                                )
+                                runOnUiThread { result.success(success) }
+                            } catch (e: Exception) {
+                                android.util.Log.e("DroidAnalyst", "Sign error: ${e.message}", e)
+                                runOnUiThread { result.error("SIGN_ERROR", e.message, null) }
+                            }
+                        }.start()
+                    } else {
+                        result.error("INVALID_ARGUMENT", "inputApk and outputApk are required", null)
+                    }
+                }
+                "searchInFiles" -> {
+                    val sourceDir = call.argument<String>("sourceDir")
+                    val query = call.argument<String>("query")
+                    val useRegex = call.argument<Boolean>("useRegex") ?: false
+                    val ignoreCase = call.argument<Boolean>("ignoreCase") ?: true
+                    val fileExtensions = call.argument<List<String>>("fileExtensions") ?: listOf("smali", "xml", "json", "txt")
+                    
+                    if (sourceDir != null && query != null) {
+                        Thread {
+                            try {
+                                val results = apkToolService.searchInFiles(sourceDir, query, useRegex, ignoreCase, fileExtensions)
+                                val jsonArray = org.json.JSONArray()
+                                results.forEach { r ->
+                                    val obj = org.json.JSONObject()
+                                    r.forEach { (k, v) -> obj.put(k, v) }
+                                    jsonArray.put(obj)
+                                }
+                                runOnUiThread { result.success(jsonArray.toString()) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("SEARCH_ERROR", e.message, null) }
+                            }
+                        }.start()
+                    } else {
+                        result.error("INVALID_ARGUMENT", "sourceDir and query are required", null)
+                    }
+                }
+                "replaceInFile" -> {
+                    val sourceDir = call.argument<String>("sourceDir")
+                    val filePath = call.argument<String>("filePath")
+                    val search = call.argument<String>("search")
+                    val replace = call.argument<String>("replace")
+                    val useRegex = call.argument<Boolean>("useRegex") ?: false
+                    val ignoreCase = call.argument<Boolean>("ignoreCase") ?: true
+                    
+                    if (sourceDir != null && filePath != null && search != null && replace != null) {
+                        val count = apkToolService.replaceInFile(sourceDir, filePath, search, replace, useRegex, ignoreCase)
+                        result.success(count)
+                    } else {
+                        result.error("INVALID_ARGUMENT", "sourceDir, filePath, search and replace are required", null)
+                    }
+                }
+                "getStringResources" -> {
+                    val sourceDir = call.argument<String>("sourceDir")
+                    val language = call.argument<String>("language") ?: "default"
+                    
+                    if (sourceDir != null) {
+                        Thread {
+                            try {
+                                val strings = apkToolService.getStringResources(sourceDir, language)
+                                val jsonObj = org.json.JSONObject()
+                                strings.forEach { (k, v) -> jsonObj.put(k, v) }
+                                runOnUiThread { result.success(jsonObj.toString()) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("STRINGS_ERROR", e.message, null) }
+                            }
+                        }.start()
+                    } else {
+                        result.error("INVALID_ARGUMENT", "sourceDir is required", null)
+                    }
+                }
+                "updateStringResource" -> {
+                    val sourceDir = call.argument<String>("sourceDir")
+                    val stringName = call.argument<String>("stringName")
+                    val newValue = call.argument<String>("newValue")
+                    val language = call.argument<String>("language") ?: "default"
+                    
+                    if (sourceDir != null && stringName != null && newValue != null) {
+                        val success = apkToolService.updateStringResource(sourceDir, stringName, newValue, language)
+                        result.success(success)
+                    } else {
+                        result.error("INVALID_ARGUMENT", "sourceDir, stringName and newValue are required", null)
+                    }
+                }
+                "getAvailableLanguages" -> {
+                    val sourceDir = call.argument<String>("sourceDir")
+                    
+                    if (sourceDir != null) {
+                        val languages = apkToolService.getAvailableLanguages(sourceDir)
+                        result.success(languages)
+                    } else {
+                        result.error("INVALID_ARGUMENT", "sourceDir is required", null)
+                    }
+                }
+                "getColorResources" -> {
+                    val sourceDir = call.argument<String>("sourceDir")
+                    
+                    if (sourceDir != null) {
+                        Thread {
+                            try {
+                                val colors = apkToolService.getColorResources(sourceDir)
+                                val jsonObj = org.json.JSONObject()
+                                colors.forEach { (k, v) -> jsonObj.put(k, v) }
+                                runOnUiThread { result.success(jsonObj.toString()) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("COLORS_ERROR", e.message, null) }
+                            }
+                        }.start()
+                    } else {
+                        result.error("INVALID_ARGUMENT", "sourceDir is required", null)
+                    }
+                }
+                "updateColorResource" -> {
+                    val sourceDir = call.argument<String>("sourceDir")
+                    val colorName = call.argument<String>("colorName")
+                    val newValue = call.argument<String>("newValue")
+                    
+                    if (sourceDir != null && colorName != null && newValue != null) {
+                        val success = apkToolService.updateColorResource(sourceDir, colorName, newValue)
+                        result.success(success)
+                    } else {
+                        result.error("INVALID_ARGUMENT", "sourceDir, colorName and newValue are required", null)
+                    }
+                }
+                "getManifestInfo" -> {
+                    val sourceDir = call.argument<String>("sourceDir")
+                    
+                    if (sourceDir != null) {
+                        Thread {
+                            try {
+                                val info = apkToolService.getManifestInfo(sourceDir)
+                                val jsonObj = org.json.JSONObject()
+                                info.forEach { (k, v) -> 
+                                    if (v is List<*>) {
+                                        jsonObj.put(k, org.json.JSONArray(v))
+                                    } else {
+                                        jsonObj.put(k, v)
+                                    }
+                                }
+                                runOnUiThread { result.success(jsonObj.toString()) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("MANIFEST_ERROR", e.message, null) }
+                            }
+                        }.start()
+                    } else {
+                        result.error("INVALID_ARGUMENT", "sourceDir is required", null)
+                    }
+                }
+                "updateManifestAttribute" -> {
+                    val sourceDir = call.argument<String>("sourceDir")
+                    val attribute = call.argument<String>("attribute")
+                    val newValue = call.argument<String>("newValue")
+                    
+                    if (sourceDir != null && attribute != null && newValue != null) {
+                        val success = apkToolService.updateManifestAttribute(sourceDir, attribute, newValue)
+                        result.success(success)
+                    } else {
+                        result.error("INVALID_ARGUMENT", "sourceDir, attribute and newValue are required", null)
+                    }
+                }
                 else -> {
                     result.notImplemented()
                 }

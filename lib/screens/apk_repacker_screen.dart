@@ -1,12 +1,8 @@
-import 'dart:async';
 import 'dart:io';
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../services/apk_tool_service.dart';
-import '../providers/device_provider.dart';
 
-/// Screen for APK decompilation and building
-/// Provides full apktool-like functionality
+import 'package:flutter/material.dart';
+import '../services/apk_tool_service.dart';
+
 class ApkRepackerScreen extends StatefulWidget {
   const ApkRepackerScreen({super.key});
 
@@ -19,505 +15,576 @@ class _ApkRepackerScreenState extends State<ApkRepackerScreen>
   late TabController _tabController;
   final ApkToolService _apkToolService = ApkToolService();
 
-  // Decompile state
+  // APK Info
   String? _selectedApkPath;
-  String? _outputDir;
-  bool _decodeSources = true;
-  bool _decodeResources = true;
+  String? _decompiledPath;
   bool _isDecompiling = false;
-  String _decompileStatus = '';
-  int _decompileProgress = 0;
-
-  // Build state
-  String? _selectedSourceDir;
-  String? _outputApkPath;
-  bool _signApk = true;
   bool _isBuilding = false;
-  String _buildStatus = '';
-  int _buildProgress = 0;
+  bool _isSigning = false;
+  String _statusMessage = '';
+  double _progress = 0.0;
 
   // File browser state
-  List<DecompiledFile> _decompiledFiles = [];
-  String? _currentSourceDir;
+  String? _currentDirectory;
+  List<FileSystemEntity> _currentFiles = [];
   String? _selectedFilePath;
-  String? _fileContent;
-  bool _isLoadingFiles = false;
+  String? _selectedFileContent;
+  bool _isLoadingFile = false;
   bool _hasUnsavedChanges = false;
 
-  // Subscriptions
-  StreamSubscription? _progressSub;
-  StreamSubscription? _errorSub;
-  StreamSubscription? _completeSub;
+  // Search state
+  final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _replaceController = TextEditingController();
+  bool _useRegex = false;
+  bool _caseSensitive = false;
+  String _searchFilter = 'smali';
+  List<SearchResult> _searchResults = [];
+  bool _isSearching = false;
+
+  // Strings editor state
+  Map<String, String> _stringResources = {};
+  List<MapEntry<String, String>> _filteredStrings = [];
+  bool _isLoadingStrings = false;
+  String _currentStringsLang = 'default';
+  final TextEditingController _stringSearchController = TextEditingController();
+
+  // Code editor
+  final TextEditingController _codeController = TextEditingController();
+  final ScrollController _editorScrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _setupListeners();
-  }
-
-  void _setupListeners() {
-    _progressSub = _apkToolService.progressStream.listen((update) {
+    _tabController = TabController(length: 4, vsync: this);
+    
+    // Listen to progress updates
+    _apkToolService.progressStream.listen((update) {
       setState(() {
-        if (_isDecompiling) {
-          _decompileStatus = update.message;
-          _decompileProgress = update.progress;
-        } else if (_isBuilding) {
-          _buildStatus = update.message;
-          _buildProgress = update.progress;
-        }
+        _statusMessage = update.message;
+        _progress = update.progress / 100.0;
       });
     });
-
-    _errorSub = _apkToolService.errorStream.listen((error) {
+    
+    _apkToolService.errorStream.listen((error) {
       _showError(error);
-      setState(() {
-        _isDecompiling = false;
-        _isBuilding = false;
-      });
     });
-
-    _completeSub = _apkToolService.completeStream.listen((outputPath) {
+    
+    _apkToolService.completeStream.listen((outputPath) {
       setState(() {
-        if (_isDecompiling) {
-          _isDecompiling = false;
-          _currentSourceDir = outputPath;
-          _loadDecompiledFiles(outputPath);
-          _showSuccess('APK decompiled successfully!\n\nOutput: $outputPath');
-        } else if (_isBuilding) {
-          _isBuilding = false;
-          _showSuccess('APK built successfully!\n\nOutput: $outputPath');
-        }
+        _statusMessage = 'Complete: $outputPath';
       });
     });
   }
 
   @override
   void dispose() {
-    _progressSub?.cancel();
-    _errorSub?.cancel();
-    _completeSub?.cancel();
     _tabController.dispose();
+    _searchController.dispose();
+    _replaceController.dispose();
+    _codeController.dispose();
+    _editorScrollController.dispose();
+    _stringSearchController.dispose();
     super.dispose();
   }
 
-  Future<void> _selectApkForDecompile() async {
-    // Show dialog to select between installed apps or file picker
-    final choice = await showModalBottomSheet<String>(
+  Future<void> _selectApk() async {
+    final pathController = TextEditingController(
+      text: _selectedApkPath ?? '/storage/emulated/0/Download/',
+    );
+
+    final result = await showDialog<String?>(
       context: context,
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.folder_open, color: Colors.deepPurple),
+            SizedBox(width: 8),
+            Text('Select APK'),
+          ],
+        ),
+        content: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Select APK Source', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 24),
-            ListTile(
-              leading: const Icon(Icons.android),
-              title: const Text('Installed Apps'),
-              subtitle: const Text('Select from device apps'),
-              onTap: () => Navigator.pop(context, 'installed'),
+            const Text(
+              'Enter the full path to the APK file:',
+              style: TextStyle(fontSize: 13),
             ),
-            ListTile(
-              leading: const Icon(Icons.folder),
-              title: const Text('Browse Files'),
-              subtitle: const Text('Select APK from storage'),
-              onTap: () => Navigator.pop(context, 'browse'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (choice == 'installed') {
-      await _selectFromInstalledApps();
-    } else if (choice == 'browse') {
-      await _selectFromBrowse();
-    }
-  }
-
-  Future<void> _selectFromInstalledApps() async {
-    final deviceProvider = context.read<DeviceProvider>();
-    
-    // Show loading indicator while fetching apps
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(
-        child: Card(
-          child: Padding(
-            padding: EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('Loading installed apps...'),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-    
-    // Force refresh apps list
-    await deviceProvider.loadInstalledApps(forceRefresh: true);
-    
-    // Close loading dialog
-    if (mounted) Navigator.of(context).pop();
-    
-    final apps = deviceProvider.installedApps
-        .where((app) => !(app['isSystem'] as bool? ?? false))
-        .toList();
-    
-    debugPrint('[APKRepacker] Loaded ${apps.length} user apps');
-
-    if (apps.isEmpty) {
-      _showError('No user apps found on device. Make sure you have installed apps.');
-      return;
-    }
-
-    final selected = await showModalBottomSheet<Map<String, dynamic>>(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        maxChildSize: 0.9,
-        minChildSize: 0.5,
-        expand: false,
-        builder: (context, scrollController) => Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                'Select APK to Decompile',
-                style: Theme.of(context).textTheme.titleLarge,
+            const SizedBox(height: 16),
+            TextField(
+              controller: pathController,
+              decoration: const InputDecoration(
+                labelText: 'APK Path',
+                hintText: '/storage/emulated/0/Download/app.apk',
+                border: OutlineInputBorder(),
+                isDense: true,
               ),
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
             ),
-            Expanded(
-              child: apps.isEmpty
-                  ? const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.android, size: 48, color: Colors.grey),
-                          SizedBox(height: 16),
-                          Text('No user apps found'),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      controller: scrollController,
-                      itemCount: apps.length,
-                      itemBuilder: (context, index) {
-                        final app = apps[index];
-                        final sourceDir = app['sourceDir'] as String? ?? '';
-                        int fileSize = 0;
-                        try {
-                          fileSize = File(sourceDir).lengthSync();
-                        } catch (e) {
-                          // File doesn't exist or can't be read
-                        }
-                        return ListTile(
-                          leading: const Icon(Icons.android),
-                          title: Text(app['appName'] as String? ?? 'Unknown'),
-                          subtitle: Text(app['packageName'] as String? ?? ''),
-                          trailing: Text(
-                            _formatSize(fileSize),
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                          onTap: () => Navigator.pop(context, app),
-                        );
-                      },
-                    ),
+            const SizedBox(height: 8),
+            const Text(
+              'Example: /storage/emulated/0/Download/myapp.apk',
+              style: TextStyle(color: Colors.grey, fontSize: 11),
             ),
           ],
         ),
-      ),
-    );
-
-    if (selected != null) {
-      setState(() {
-        _selectedApkPath = selected['sourceDir'] as String?;
-        _outputDir = _apkToolService.getDefaultOutputDir(_selectedApkPath!);
-      });
-    }
-  }
-
-  Future<void> _selectFromBrowse() async {
-    // Browse multiple common directories for APK files
-    final List<String> searchDirs = [
-      '/storage/emulated/0/Download',
-      '/storage/emulated/0/Documents',
-      '/storage/emulated/0/DroidAnalyst',
-      '/storage/emulated/0/APK',
-      '/sdcard/Download',
-    ];
-    
-    final List<FileSystemEntity> apkFiles = [];
-
-    // Show loading while scanning
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(
-        child: Card(
-          child: Padding(
-            padding: EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('Scanning for APK files...'),
-              ],
-            ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
           ),
-        ),
+          ElevatedButton(
+            onPressed: () {
+              final path = pathController.text.trim();
+              if (path.isNotEmpty && path.toLowerCase().endsWith('.apk')) {
+                Navigator.pop(ctx, path);
+              } else {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please enter a valid APK path ending in .apk'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            child: const Text('Select'),
+          ),
+        ],
       ),
     );
 
-    try {
-      for (final dirPath in searchDirs) {
-        final dir = Directory(dirPath);
-        if (await dir.exists()) {
-          final files = await dir.list().toList();
-          apkFiles.addAll(
-            files.where((f) => f.path.toLowerCase().endsWith('.apk')).toList(),
-          );
-        }
+    if (result != null && result.isNotEmpty) {
+      // Verify file exists
+      final file = File(result);
+      if (await file.exists()) {
+        setState(() {
+          _selectedApkPath = result;
+          _decompiledPath = null;
+          _statusMessage = 'APK selected: ${result.split('/').last}';
+        });
+      } else {
+        _showError('File not found: $result');
       }
-      debugPrint('[APKRepacker] Found ${apkFiles.length} APK files');
-    } catch (e) {
-      debugPrint('[APKRepacker] Error scanning directories: $e');
-    }
-    
-    // Close loading dialog
-    if (mounted) Navigator.of(context).pop();
-
-    if (apkFiles.isEmpty) {
-      _showError('No APK files found. Place APK files in Download or Documents folder.');
-      return;
-    }
-
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        maxChildSize: 0.9,
-        minChildSize: 0.5,
-        expand: false,
-        builder: (context, scrollController) => Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                'Select APK File',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-            ),
-            Expanded(
-              child: ListView.builder(
-                controller: scrollController,
-                itemCount: apkFiles.length,
-                itemBuilder: (context, index) {
-                  final file = apkFiles[index];
-                  final fileName = file.path.split('/').last;
-                  int fileSize = 0;
-                  try {
-                    fileSize = File(file.path).lengthSync();
-                  } catch (e) {
-                    // Can't read size
-                  }
-                  return ListTile(
-                    leading: const Icon(Icons.file_present),
-                    title: Text(fileName),
-                    subtitle: Text(file.path),
-                    trailing: Text(
-                      _formatSize(fileSize),
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    onTap: () => Navigator.pop(context, file.path),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (selected != null) {
-      setState(() {
-        _selectedApkPath = selected;
-        _outputDir = _apkToolService.getDefaultOutputDir(_selectedApkPath!);
-      });
     }
   }
 
-  Future<void> _startDecompile() async {
-    if (_selectedApkPath == null || _outputDir == null) {
-      _showError('Please select an APK and output directory');
+  Future<void> _decompileApk() async {
+    if (_selectedApkPath == null) {
+      _showError('Please select an APK first');
       return;
     }
-
-    debugPrint('[APKRepacker] Starting decompile:');
-    debugPrint('[APKRepacker]   APK: $_selectedApkPath');
-    debugPrint('[APKRepacker]   Output: $_outputDir');
-    debugPrint('[APKRepacker]   Decode sources: $_decodeSources');
-    debugPrint('[APKRepacker]   Decode resources: $_decodeResources');
 
     setState(() {
       _isDecompiling = true;
-      _decompileProgress = 0;
-      _decompileStatus = 'Starting...';
+      _progress = 0.0;
+      _statusMessage = 'Starting decompilation...';
     });
 
-    final success = await _apkToolService.decodeApk(
-      apkPath: _selectedApkPath!,
-      outputDir: _outputDir!,
-      decodeSources: _decodeSources,
-      decodeResources: _decodeResources,
-    );
-    
-    debugPrint('[APKRepacker] Decompile returned: $success');
-  }
-
-  Future<void> _selectSourceDir() async {
-    // Show directory picker or list available decompiled directories
-    final downloadsDir = Directory('/storage/emulated/0/Download');
-    final dirs = await downloadsDir
-        .list()
-        .where((e) => e is Directory && e.path.contains('_decompiled'))
-        .map((e) => e.path)
-        .toList();
-
-    if (dirs.isEmpty) {
-      _showError('No decompiled APK directories found.\nDecompile an APK first.');
-      return;
-    }
-
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      builder: (context) => ListView.builder(
-        shrinkWrap: true,
-        itemCount: dirs.length,
-        itemBuilder: (context, index) => ListTile(
-          leading: const Icon(Icons.folder),
-          title: Text(dirs[index].split('/').last),
-          subtitle: Text(dirs[index]),
-          onTap: () => Navigator.pop(context, dirs[index]),
-        ),
-      ),
-    );
-
-    if (selected != null) {
-      setState(() {
-        _selectedSourceDir = selected;
-        _outputApkPath = _apkToolService.getDefaultOutputApk(selected);
-        _currentSourceDir = selected;
-      });
-      _loadDecompiledFiles(selected);
-    }
-  }
-
-  Future<void> _loadDecompiledFiles(String sourceDir) async {
-    setState(() => _isLoadingFiles = true);
-    
     try {
-      final files = await _apkToolService.listDecompiledFiles(sourceDir);
-      setState(() {
-        _decompiledFiles = files;
-        _currentSourceDir = sourceDir;
-        _isLoadingFiles = false;
-      });
+      final outputDir = _apkToolService.getDefaultOutputDir(_selectedApkPath!);
+      
+      final success = await _apkToolService.decodeApk(
+        apkPath: _selectedApkPath!,
+        outputDir: outputDir,
+        decodeSources: true,
+        decodeResources: true,
+      );
+
+      if (success) {
+        setState(() {
+          _decompiledPath = outputDir;
+          _currentDirectory = outputDir;
+          _statusMessage = 'Decompilation complete!';
+        });
+        await _loadDirectory(outputDir);
+      } else {
+        _showError('Decompilation failed');
+      }
     } catch (e) {
-      setState(() => _isLoadingFiles = false);
-      _showError('Failed to load files: $e');
+      _showError('Decompilation failed: $e');
+    } finally {
+      setState(() {
+        _isDecompiling = false;
+        _progress = 0.0;
+      });
     }
   }
 
-  Future<void> _startBuild() async {
-    if (_selectedSourceDir == null || _outputApkPath == null) {
-      _showError('Please select source directory and output path');
+  Future<void> _buildApk() async {
+    if (_decompiledPath == null) {
+      _showError('Please decompile an APK first');
       return;
     }
 
     setState(() {
       _isBuilding = true;
-      _buildProgress = 0;
-      _buildStatus = 'Starting...';
+      _progress = 0.0;
+      _statusMessage = 'Starting build...';
     });
 
-    await _apkToolService.buildApk(
-      sourceDir: _selectedSourceDir!,
-      outputApk: _outputApkPath!,
-      signApk: _signApk,
-    );
+    try {
+      final outputApk = _apkToolService.getDefaultOutputApk(_decompiledPath!);
+      
+      final success = await _apkToolService.buildApk(
+        sourceDir: _decompiledPath!,
+        outputApk: outputApk,
+        signApk: false,
+      );
+
+      if (success) {
+        setState(() {
+          _statusMessage = 'Build complete! Output: $outputApk';
+        });
+
+        // Prompt to sign
+        final shouldSign = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Build Complete'),
+            content: Text('APK built successfully.\n\nOutput: $outputApk\n\nWould you like to sign it?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('No'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Sign APK'),
+              ),
+            ],
+          ),
+        );
+
+        if (shouldSign == true) {
+          await _signApk(outputApk);
+        }
+      } else {
+        _showError('Build failed');
+      }
+    } catch (e) {
+      _showError('Build failed: $e');
+    } finally {
+      setState(() {
+        _isBuilding = false;
+        _progress = 0.0;
+      });
+    }
   }
 
-  Future<void> _openFile(DecompiledFile file) async {
-    if (_currentSourceDir == null) return;
+  Future<void> _signApk(String apkPath) async {
+    setState(() {
+      _isSigning = true;
+      _statusMessage = 'Signing APK...';
+    });
 
-    setState(() => _selectedFilePath = file.path);
+    try {
+      final signedPath = apkPath.replaceAll('.apk', '_signed.apk');
+      
+      final success = await _apkToolService.signApk(
+        inputApk: apkPath,
+        outputApk: signedPath,
+        minSdkVersion: 21,
+        enableV1: true,
+        enableV2: true,
+        enableV3: false,
+      );
 
-    final content = await _apkToolService.readDecompiledFile(
-      _currentSourceDir!,
-      file.path,
-    );
+      if (success) {
+        setState(() {
+          _statusMessage = 'APK signed successfully! Output: $signedPath';
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Signed APK: $signedPath'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      } else {
+        _showError('Signing failed');
+      }
+    } catch (e) {
+      _showError('Signing failed: $e');
+    } finally {
+      setState(() {
+        _isSigning = false;
+        _progress = 0.0;
+      });
+    }
+  }
+
+  Future<void> _loadDirectory(String path) async {
+    try {
+      final dir = Directory(path);
+      if (await dir.exists()) {
+        final entities = await dir.list().toList();
+        entities.sort((a, b) {
+          // Directories first
+          if (a is Directory && b is File) return -1;
+          if (a is File && b is Directory) return 1;
+          return a.path.toLowerCase().compareTo(b.path.toLowerCase());
+        });
+
+        setState(() {
+          _currentDirectory = path;
+          _currentFiles = entities;
+        });
+      }
+    } catch (e) {
+      _showError('Failed to load directory: $e');
+    }
+  }
+
+  Future<void> _loadFile(String path) async {
+    if (_hasUnsavedChanges) {
+      final shouldDiscard = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Unsaved Changes'),
+          content: const Text('You have unsaved changes. Discard them?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Discard'),
+            ),
+          ],
+        ),
+      );
+      if (shouldDiscard != true) return;
+    }
 
     setState(() {
-      _fileContent = content;
-      _hasUnsavedChanges = false;
+      _isLoadingFile = true;
+      _selectedFilePath = path;
     });
+
+    try {
+      final content = await _apkToolService.readDecompiledFile(_decompiledPath!, path);
+      setState(() {
+        _selectedFileContent = content;
+        _codeController.text = content ?? '';
+        _hasUnsavedChanges = false;
+      });
+    } catch (e) {
+      _showError('Failed to load file: $e');
+    } finally {
+      setState(() {
+        _isLoadingFile = false;
+      });
+    }
   }
 
   Future<void> _saveFile() async {
-    if (_currentSourceDir == null ||
-        _selectedFilePath == null ||
-        _fileContent == null) {
+    if (_selectedFilePath == null || _decompiledPath == null) return;
+
+    try {
+      final success = await _apkToolService.writeDecompiledFile(
+        _decompiledPath!,
+        _selectedFilePath!,
+        _codeController.text,
+      );
+
+      if (success) {
+        setState(() {
+          _hasUnsavedChanges = false;
+          _selectedFileContent = _codeController.text;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('File saved successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      _showError('Failed to save file: $e');
+    }
+  }
+
+  Future<void> _performSearch() async {
+    if (_decompiledPath == null) {
+      _showError('Please decompile an APK first');
       return;
     }
 
-    final success = await _apkToolService.writeDecompiledFile(
-      _currentSourceDir!,
-      _selectedFilePath!,
-      _fileContent!,
+    final query = _searchController.text;
+    if (query.isEmpty) {
+      _showError('Please enter a search query');
+      return;
+    }
+
+    setState(() {
+      _isSearching = true;
+      _searchResults = [];
+    });
+
+    try {
+      final results = await _apkToolService.searchInFiles(
+        sourceDir: _decompiledPath!,
+        query: query,
+        useRegex: _useRegex,
+        ignoreCase: !_caseSensitive,
+        fileExtensions: [_searchFilter],
+      );
+
+      setState(() {
+        _searchResults = results;
+        _statusMessage = 'Found ${results.length} matches';
+      });
+    } catch (e) {
+      _showError('Search failed: $e');
+    } finally {
+      setState(() {
+        _isSearching = false;
+      });
+    }
+  }
+
+  Future<void> _performReplace() async {
+    if (_decompiledPath == null || _searchResults.isEmpty) {
+      _showError('Please perform a search first');
+      return;
+    }
+
+    final replacement = _replaceController.text;
+    final query = _searchController.text;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirm Replace'),
+        content: Text('Replace ${_searchResults.length} occurrences of "$query" with "$replacement"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            child: const Text('Replace All'),
+          ),
+        ],
+      ),
     );
 
-    if (success) {
-      setState(() => _hasUnsavedChanges = false);
-      _showSuccess('File saved successfully');
+    if (confirm != true) return;
+
+    try {
+      int totalReplaced = 0;
+      // Group by file
+      final fileGroups = <String, List<SearchResult>>{};
+      for (final result in _searchResults) {
+        fileGroups.putIfAbsent(result.file, () => []).add(result);
+      }
+      
+      for (final filePath in fileGroups.keys) {
+        final count = await _apkToolService.replaceInFile(
+          sourceDir: _decompiledPath!,
+          filePath: filePath,
+          search: query,
+          replace: replacement,
+          useRegex: _useRegex,
+          ignoreCase: !_caseSensitive,
+        );
+        totalReplaced += count;
+      }
+
+      setState(() {
+        _statusMessage = 'Replaced $totalReplaced occurrences';
+        _searchResults = [];
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Replaced $totalReplaced occurrences'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      _showError('Replace failed: $e');
+    }
+  }
+
+  Future<void> _loadStringResources() async {
+    if (_decompiledPath == null) {
+      _showError('Please decompile an APK first');
+      return;
+    }
+
+    setState(() {
+      _isLoadingStrings = true;
+    });
+
+    try {
+      final resources = await _apkToolService.getStringResources(
+        _decompiledPath!,
+        language: _currentStringsLang,
+      );
+
+      setState(() {
+        _stringResources = resources;
+        _filterStrings();
+        _statusMessage = 'Loaded ${resources.length} string resources';
+      });
+    } catch (e) {
+      _showError('Failed to load strings: $e');
+    } finally {
+      setState(() {
+        _isLoadingStrings = false;
+      });
+    }
+  }
+
+  void _filterStrings() {
+    final query = _stringSearchController.text.toLowerCase();
+    if (query.isEmpty) {
+      _filteredStrings = _stringResources.entries.toList();
     } else {
-      _showError('Failed to save file');
+      _filteredStrings = _stringResources.entries
+          .where((e) => 
+              e.key.toLowerCase().contains(query) ||
+              e.value.toLowerCase().contains(query))
+          .toList();
+    }
+  }
+
+  Future<void> _updateStringValue(String name, String newValue) async {
+    if (_decompiledPath == null) return;
+
+    try {
+      final success = await _apkToolService.updateStringResource(
+        sourceDir: _decompiledPath!,
+        stringName: name,
+        newValue: newValue,
+        language: _currentStringsLang,
+      );
+
+      if (success) {
+        setState(() {
+          _stringResources[name] = newValue;
+          _filterStrings();
+        });
+      }
+    } catch (e) {
+      _showError('Failed to update string: $e');
     }
   }
 
   void _showError(String message) {
+    setState(() {
+      _statusMessage = message;
+    });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
         backgroundColor: Colors.red,
-        duration: const Duration(seconds: 4),
       ),
     );
-  }
-
-  void _showSuccess(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 3),
-      ),
-    );
-  }
-
-  String _formatSize(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
   @override
@@ -529,24 +596,63 @@ class _ApkRepackerScreenState extends State<ApkRepackerScreen>
           controller: _tabController,
           tabs: const [
             Tab(icon: Icon(Icons.unarchive), text: 'Decompile'),
-            Tab(icon: Icon(Icons.build), text: 'Build'),
-            Tab(icon: Icon(Icons.edit_note), text: 'Edit'),
+            Tab(icon: Icon(Icons.edit), text: 'Edit'),
+            Tab(icon: Icon(Icons.search), text: 'Search'),
+            Tab(icon: Icon(Icons.text_fields), text: 'Strings'),
           ],
         ),
+        actions: [
+          if (_decompiledPath != null)
+            IconButton(
+              icon: const Icon(Icons.build),
+              tooltip: 'Build APK',
+              onPressed: _isBuilding || _isDecompiling ? null : _buildApk,
+            ),
+        ],
       ),
-      body: TabBarView(
-        controller: _tabController,
+      body: Column(
         children: [
-          _buildDecompileTab(),
-          _buildBuildTab(),
-          _buildEditTab(),
+          // Status bar
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _statusMessage.isEmpty ? 'Ready' : _statusMessage,
+                    style: Theme.of(context).textTheme.bodySmall,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (_progress > 0)
+                  SizedBox(
+                    width: 100,
+                    child: LinearProgressIndicator(value: _progress),
+                  ),
+              ],
+            ),
+          ),
+
+          // Tab content
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildDecompileTab(),
+                _buildEditTab(),
+                _buildSearchTab(),
+                _buildStringsTab(),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildDecompileTab() {
-    return SingleChildScrollView(
+    return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -563,106 +669,35 @@ class _ApkRepackerScreenState extends State<ApkRepackerScreen>
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 8),
-                  ListTile(
-                    leading: const Icon(Icons.android),
-                    title: Text(_selectedApkPath?.split('/').last ?? 'No APK selected'),
-                    subtitle: _selectedApkPath != null
-                        ? Text(_selectedApkPath!, maxLines: 1, overflow: TextOverflow.ellipsis)
-                        : null,
-                    trailing: const Icon(Icons.folder_open),
-                    onTap: _isDecompiling ? null : _selectApkForDecompile,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _selectedApkPath ?? 'No APK selected',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      ElevatedButton.icon(
+                        onPressed: _isDecompiling ? null : _selectApk,
+                        icon: const Icon(Icons.folder_open),
+                        label: const Text('Browse'),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
           ),
+
           const SizedBox(height: 16),
-
-          // Output Directory Card
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Output Directory',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    initialValue: _outputDir,
-                    decoration: const InputDecoration(
-                      hintText: '/storage/emulated/0/Download/...',
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (value) => _outputDir = value,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Options Card
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Decompile Options',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  SwitchListTile(
-                    title: const Text('Decode Sources (DEX → Smali)'),
-                    subtitle: const Text('Convert bytecode to readable smali'),
-                    value: _decodeSources,
-                    onChanged: _isDecompiling ? null : (v) => setState(() => _decodeSources = v),
-                  ),
-                  SwitchListTile(
-                    title: const Text('Decode Resources'),
-                    subtitle: const Text('Decode binary XML files'),
-                    value: _decodeResources,
-                    onChanged: _isDecompiling ? null : (v) => setState(() => _decodeResources = v),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Progress
-          if (_isDecompiling) ...[
-            Card(
-              color: Theme.of(context).colorScheme.primaryContainer,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    LinearProgressIndicator(value: _decompileProgress / 100),
-                    const SizedBox(height: 8),
-                    Text(
-                      _decompileStatus,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    Text(
-                      '$_decompileProgress%',
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
 
           // Decompile Button
           ElevatedButton.icon(
-            onPressed: _isDecompiling || _selectedApkPath == null
-                ? null
-                : _startDecompile,
+            onPressed: _selectedApkPath != null && !_isDecompiling
+                ? _decompileApk
+                : null,
             icon: _isDecompiling
                 ? const SizedBox(
                     width: 20,
@@ -672,327 +707,679 @@ class _ApkRepackerScreenState extends State<ApkRepackerScreen>
                 : const Icon(Icons.unarchive),
             label: Text(_isDecompiling ? 'Decompiling...' : 'Decompile APK'),
             style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(vertical: 16),
             ),
           ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildBuildTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Source Directory Card
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Source Directory',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  ListTile(
-                    leading: const Icon(Icons.folder),
-                    title: Text(_selectedSourceDir?.split('/').last ?? 'No directory selected'),
-                    subtitle: _selectedSourceDir != null
-                        ? Text(_selectedSourceDir!, maxLines: 1, overflow: TextOverflow.ellipsis)
-                        : null,
-                    trailing: const Icon(Icons.folder_open),
-                    onTap: _isBuilding ? null : _selectSourceDir,
-                  ),
-                ],
-              ),
+          if (_isDecompiling) ...[
+            const SizedBox(height: 16),
+            LinearProgressIndicator(value: _progress),
+            const SizedBox(height: 8),
+            Text(
+              _statusMessage,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
             ),
-          ),
+          ],
+
           const SizedBox(height: 16),
 
-          // Output APK Card
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Output APK',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    initialValue: _outputApkPath,
-                    decoration: const InputDecoration(
-                      hintText: '/storage/emulated/0/Download/app_rebuilt.apk',
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (value) => _outputApkPath = value,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Options Card
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Build Options',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  SwitchListTile(
-                    title: const Text('Sign APK'),
-                    subtitle: const Text('Sign with debug key (v1+v2+v3)'),
-                    value: _signApk,
-                    onChanged: _isBuilding ? null : (v) => setState(() => _signApk = v),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Progress
-          if (_isBuilding) ...[
+          // Decompiled Path Info
+          if (_decompiledPath != null)
             Card(
-              color: Theme.of(context).colorScheme.primaryContainer,
+              color: Colors.green.shade50,
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    LinearProgressIndicator(value: _buildProgress / 100),
+                    Row(
+                      children: [
+                        const Icon(Icons.check_circle, color: Colors.green),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Decompiled Successfully',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                color: Colors.green.shade800,
+                              ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 8),
                     Text(
-                      _buildStatus,
-                      style: Theme.of(context).textTheme.bodyMedium,
+                      'Output: $_decompiledPath',
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
-                    Text(
-                      '$_buildProgress%',
-                      style: Theme.of(context).textTheme.headlineSmall,
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            _tabController.animateTo(1);
+                          },
+                          icon: const Icon(Icons.edit),
+                          label: const Text('Edit Files'),
+                        ),
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed: _buildApk,
+                          icon: const Icon(Icons.build),
+                          label: const Text('Build APK'),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 16),
-          ],
-
-          // Build Button
-          ElevatedButton.icon(
-            onPressed: _isBuilding || _selectedSourceDir == null
-                ? null
-                : _startBuild,
-            icon: _isBuilding
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.build),
-            label: Text(_isBuilding ? 'Building...' : 'Build APK'),
-            style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.all(16),
-            ),
-          ),
         ],
       ),
     );
   }
 
   Widget _buildEditTab() {
+    if (_decompiledPath == null) {
+      return const Center(
+        child: Text('Please decompile an APK first'),
+      );
+    }
+
     return Row(
       children: [
-        // File browser
-        Container(
-          width: 250,
-          decoration: BoxDecoration(
-            border: Border(
-              right: BorderSide(
-                color: Theme.of(context).dividerColor,
-              ),
-            ),
-          ),
-          child: Column(
-            children: [
-              // Header
-              Container(
-                padding: const EdgeInsets.all(8),
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                child: Row(
-                  children: [
-                    const Icon(Icons.folder, size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _currentSourceDir?.split('/').last ?? 'No project',
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.folder_open, size: 20),
-                      onPressed: _selectSourceDir,
-                      tooltip: 'Open project',
-                    ),
-                  ],
-                ),
-              ),
-              
-              // File list
-              Expanded(
-                child: _isLoadingFiles
-                    ? const Center(child: CircularProgressIndicator())
-                    : _decompiledFiles.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.folder_open, size: 48, color: Colors.grey),
-                                const SizedBox(height: 16),
-                                const Text('No project loaded'),
-                                const SizedBox(height: 8),
-                                TextButton.icon(
-                                  onPressed: _selectSourceDir,
-                                  icon: const Icon(Icons.folder_open),
-                                  label: const Text('Open Project'),
-                                ),
-                              ],
-                            ),
-                          )
-                        : ListView.builder(
-                            itemCount: _decompiledFiles.length,
-                            itemBuilder: (context, index) {
-                              final file = _decompiledFiles[index];
-                              final isSelected = _selectedFilePath == file.path;
-                              
-                              return ListTile(
-                                dense: true,
-                                selected: isSelected,
-                                leading: Icon(
-                                  _getFileIcon(file),
-                                  size: 20,
-                                  color: _getFileColor(file),
-                                ),
-                                title: Text(
-                                  file.path.split('/').last,
-                                  style: const TextStyle(fontSize: 12),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                subtitle: Text(
-                                  _formatSize(file.size),
-                                  style: const TextStyle(fontSize: 10),
-                                ),
-                                onTap: () => _openFile(file),
-                              );
-                            },
-                          ),
-              ),
-            ],
-          ),
-        ),
-        
-        // Editor
-        Expanded(
-          child: _fileContent == null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+        // File tree
+        SizedBox(
+          width: 280,
+          child: Card(
+            margin: const EdgeInsets.all(8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Directory header
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  child: Row(
                     children: [
-                      Icon(
-                        Icons.code,
-                        size: 64,
-                        color: Theme.of(context).disabledColor,
+                      IconButton(
+                        icon: const Icon(Icons.arrow_upward, size: 20),
+                        onPressed: _currentDirectory != _decompiledPath
+                            ? () {
+                                final parent = Directory(_currentDirectory!).parent;
+                                if (parent.path.startsWith(_decompiledPath!)) {
+                                  _loadDirectory(parent.path);
+                                }
+                              }
+                            : null,
+                        tooltip: 'Go up',
                       ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Select a file to edit',
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              color: Theme.of(context).disabledColor,
-                            ),
+                      Expanded(
+                        child: Text(
+                          _currentDirectory?.replaceFirst(_decompiledPath!, '') ?? '/',
+                          style: Theme.of(context).textTheme.bodySmall,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.refresh, size: 20),
+                        onPressed: () => _loadDirectory(_currentDirectory!),
+                        tooltip: 'Refresh',
                       ),
                     ],
                   ),
-                )
-              : Column(
-                  children: [
-                    // Editor toolbar
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              _selectedFilePath ?? '',
-                              style: Theme.of(context).textTheme.bodySmall,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          if (_hasUnsavedChanges)
-                            const Padding(
-                              padding: EdgeInsets.only(right: 8),
-                              child: Icon(Icons.circle, size: 8, color: Colors.orange),
-                            ),
-                          IconButton(
-                            icon: const Icon(Icons.save, size: 20),
-                            onPressed: _hasUnsavedChanges ? _saveFile : null,
-                            tooltip: 'Save',
-                          ),
-                        ],
-                      ),
-                    ),
-                    
-                    // Code editor
-                    Expanded(
-                      child: TextField(
-                        controller: TextEditingController(text: _fileContent),
-                        maxLines: null,
-                        expands: true,
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 12,
+                ),
+
+                // File list
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: _currentFiles.length,
+                    itemBuilder: (context, index) {
+                      final entity = _currentFiles[index];
+                      final isDir = entity is Directory;
+                      final name = entity.path.split(Platform.pathSeparator).last;
+                      final isSelected = entity.path == _selectedFilePath;
+
+                      return ListTile(
+                        dense: true,
+                        leading: Icon(
+                          isDir
+                              ? Icons.folder
+                              : _getFileIcon(name),
+                          color: isDir ? Colors.amber : null,
+                          size: 20,
                         ),
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.all(8),
+                        title: Text(
+                          name,
+                          style: TextStyle(
+                            fontWeight: isSelected ? FontWeight.bold : null,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        onChanged: (value) {
-                          _fileContent = value;
-                          if (!_hasUnsavedChanges) {
-                            setState(() => _hasUnsavedChanges = true);
+                        selected: isSelected,
+                        onTap: () {
+                          if (isDir) {
+                            _loadDirectory(entity.path);
+                          } else {
+                            _loadFile(entity.path);
                           }
                         },
-                      ),
-                    ),
-                  ],
+                      );
+                    },
+                  ),
                 ),
+              ],
+            ),
+          ),
+        ),
+
+        // Code editor
+        Expanded(
+          child: Card(
+            margin: const EdgeInsets.all(8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Editor header
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _selectedFilePath?.split(Platform.pathSeparator).last ?? 'No file selected',
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                      ),
+                      if (_hasUnsavedChanges)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.orange,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'Modified',
+                            style: TextStyle(color: Colors.white, fontSize: 10),
+                          ),
+                        ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: const Icon(Icons.save),
+                        onPressed: _hasUnsavedChanges ? _saveFile : null,
+                        tooltip: 'Save (Ctrl+S)',
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Editor content
+                Expanded(
+                  child: _isLoadingFile
+                      ? const Center(child: CircularProgressIndicator())
+                      : _selectedFilePath == null
+                          ? const Center(
+                              child: Text('Select a file to edit'),
+                            )
+                          : SingleChildScrollView(
+                              controller: _editorScrollController,
+                              child: TextField(
+                                controller: _codeController,
+                                maxLines: null,
+                                style: const TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontSize: 13,
+                                ),
+                                decoration: const InputDecoration(
+                                  border: InputBorder.none,
+                                  contentPadding: EdgeInsets.all(16),
+                                ),
+                                onChanged: (value) {
+                                  if (!_hasUnsavedChanges) {
+                                    setState(() {
+                                      _hasUnsavedChanges = true;
+                                    });
+                                  }
+                                },
+                              ),
+                            ),
+                ),
+              ],
+            ),
+          ),
         ),
       ],
     );
   }
 
-  IconData _getFileIcon(DecompiledFile file) {
-    if (file.isSmali) return Icons.code;
-    if (file.isXml) return Icons.description;
-    if (file.isNative) return Icons.memory;
-    if (file.isManifest) return Icons.app_settings_alt;
-    return Icons.insert_drive_file;
+  Widget _buildSearchTab() {
+    if (_decompiledPath == null) {
+      return const Center(
+        child: Text('Please decompile an APK first'),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Search input card
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Search in Files',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Search field
+                  TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      labelText: 'Search pattern',
+                      hintText: 'Enter text or regex pattern',
+                      prefixIcon: const Icon(Icons.search),
+                      border: const OutlineInputBorder(),
+                      suffixIcon: _searchController.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() {});
+                              },
+                            )
+                          : null,
+                    ),
+                    onSubmitted: (_) => _performSearch(),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // Replace field
+                  TextField(
+                    controller: _replaceController,
+                    decoration: const InputDecoration(
+                      labelText: 'Replace with',
+                      hintText: 'Replacement text',
+                      prefixIcon: Icon(Icons.find_replace),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // Options row
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 8,
+                    children: [
+                      FilterChip(
+                        label: const Text('Regex'),
+                        selected: _useRegex,
+                        onSelected: (v) => setState(() => _useRegex = v),
+                      ),
+                      FilterChip(
+                        label: const Text('Case Sensitive'),
+                        selected: _caseSensitive,
+                        onSelected: (v) => setState(() => _caseSensitive = v),
+                      ),
+                      SizedBox(
+                        width: 150,
+                        child: DropdownButtonFormField<String>(
+                          value: _searchFilter,
+                          decoration: const InputDecoration(
+                            labelText: 'File type',
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          ),
+                          items: const [
+                            DropdownMenuItem(value: 'smali', child: Text('Smali')),
+                            DropdownMenuItem(value: 'xml', child: Text('XML')),
+                            DropdownMenuItem(value: 'java', child: Text('Java')),
+                            DropdownMenuItem(value: 'kt', child: Text('Kotlin')),
+                            DropdownMenuItem(value: 'txt', child: Text('Text')),
+                          ],
+                          onChanged: (v) => setState(() => _searchFilter = v!),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Action buttons
+                  Row(
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: _isSearching ? null : _performSearch,
+                        icon: _isSearching
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.search),
+                        label: Text(_isSearching ? 'Searching...' : 'Search'),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: _searchResults.isNotEmpty ? _performReplace : null,
+                        icon: const Icon(Icons.find_replace),
+                        label: const Text('Replace All'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Results header
+          Row(
+            children: [
+              Text(
+                'Results (${_searchResults.length})',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const Spacer(),
+              if (_searchResults.isNotEmpty)
+                TextButton.icon(
+                  onPressed: () => setState(() => _searchResults = []),
+                  icon: const Icon(Icons.clear_all),
+                  label: const Text('Clear'),
+                ),
+            ],
+          ),
+
+          const SizedBox(height: 8),
+
+          // Results list
+          Expanded(
+            child: _searchResults.isEmpty
+                ? Center(
+                    child: Text(
+                      _isSearching
+                          ? 'Searching...'
+                          : 'Enter a search pattern and click Search',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Theme.of(context).colorScheme.outline,
+                          ),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: _searchResults.length,
+                    itemBuilder: (context, index) {
+                      final result = _searchResults[index];
+                      final relativePath = result.file.replaceFirst('$_decompiledPath/', '');
+
+                      return Card(
+                        child: ListTile(
+                          leading: Icon(
+                            _getFileIcon(result.file.split('/').last),
+                            size: 20,
+                          ),
+                          title: Text(
+                            relativePath,
+                            style: const TextStyle(fontSize: 13),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Line ${result.lineNumber}',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.yellow.shade100,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                                child: Text(
+                                  result.line.trim(),
+                                  style: const TextStyle(
+                                    fontFamily: 'monospace',
+                                    fontSize: 11,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                          onTap: () {
+                            _loadFile(result.file);
+                            _tabController.animateTo(1);
+                          },
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
   }
 
-  Color _getFileColor(DecompiledFile file) {
-    if (file.isSmali) return Colors.blue;
-    if (file.isXml) return Colors.orange;
-    if (file.isNative) return Colors.purple;
-    if (file.isManifest) return Colors.green;
-    return Colors.grey;
+  Widget _buildStringsTab() {
+    if (_decompiledPath == null) {
+      return const Center(
+        child: Text('Please decompile an APK first'),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Controls
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'String Resources',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(width: 16),
+                      SizedBox(
+                        width: 120,
+                        child: DropdownButtonFormField<String>(
+                          value: _currentStringsLang,
+                          decoration: const InputDecoration(
+                            labelText: 'Language',
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          ),
+                          items: const [
+                            DropdownMenuItem(value: 'default', child: Text('Default')),
+                            DropdownMenuItem(value: 'en', child: Text('English')),
+                            DropdownMenuItem(value: 'es', child: Text('Spanish')),
+                            DropdownMenuItem(value: 'de', child: Text('German')),
+                            DropdownMenuItem(value: 'fr', child: Text('French')),
+                            DropdownMenuItem(value: 'zh', child: Text('Chinese')),
+                          ],
+                          onChanged: (v) {
+                            setState(() => _currentStringsLang = v!);
+                          },
+                        ),
+                      ),
+                      const Spacer(),
+                      ElevatedButton.icon(
+                        onPressed: _isLoadingStrings ? null : _loadStringResources,
+                        icon: _isLoadingStrings
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.refresh),
+                        label: const Text('Load'),
+                      ),
+                    ],
+                  ),
+                  if (_stringResources.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _stringSearchController,
+                      decoration: InputDecoration(
+                        labelText: 'Filter strings',
+                        hintText: 'Search by name or value',
+                        prefixIcon: const Icon(Icons.filter_list),
+                        border: const OutlineInputBorder(),
+                        suffixIcon: _stringSearchController.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  _stringSearchController.clear();
+                                  _filterStrings();
+                                  setState(() {});
+                                },
+                              )
+                            : null,
+                      ),
+                      onChanged: (v) {
+                        _filterStrings();
+                        setState(() {});
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Info bar
+          if (_stringResources.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                'Showing ${_filteredStrings.length} of ${_stringResources.length} strings',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+
+          const SizedBox(height: 8),
+
+          // Strings list
+          Expanded(
+            child: _stringResources.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.text_fields,
+                          size: 64,
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          _isLoadingStrings
+                              ? 'Loading strings...'
+                              : 'Click "Load" to load string resources',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: Theme.of(context).colorScheme.outline,
+                              ),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: _filteredStrings.length,
+                    itemBuilder: (context, index) {
+                      final entry = _filteredStrings[index];
+
+                      return Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.label, size: 16),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: SelectableText(
+                                      entry.key,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontFamily: 'monospace',
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              TextFormField(
+                                initialValue: entry.value,
+                                decoration: const InputDecoration(
+                                  border: OutlineInputBorder(),
+                                  contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                ),
+                                style: const TextStyle(fontSize: 13),
+                                maxLines: null,
+                                onFieldSubmitted: (v) {
+                                  _updateStringValue(entry.key, v);
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _getFileIcon(String filename) {
+    final ext = filename.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'smali':
+        return Icons.code;
+      case 'xml':
+        return Icons.description;
+      case 'java':
+      case 'kt':
+        return Icons.integration_instructions;
+      case 'png':
+      case 'jpg':
+      case 'jpeg':
+      case 'gif':
+      case 'webp':
+        return Icons.image;
+      case 'dex':
+        return Icons.memory;
+      default:
+        return Icons.insert_drive_file;
+    }
   }
 }

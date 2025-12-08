@@ -1,30 +1,32 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+// Basic smoke test for Droid Analyst app
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:droid_analyst/main.dart';
+import 'package:provider/provider.dart';
+import 'package:droid_analyst/providers/device_provider.dart';
+import 'package:droid_analyst/screens/apk_repacker_screen.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const DroidAnalystApp());
+  testWidgets('APK Repacker screen basic test', (WidgetTester tester) async {
+    // Build the APK Repacker screen which doesn't require all providers
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MultiProvider(
+          providers: [
+            ChangeNotifierProvider(create: (_) => DeviceProvider()),
+          ],
+          child: const ApkRepackerScreen(),
+        ),
+      ),
+    );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    // Verify tabs exist
+    expect(find.text('Decompile'), findsOneWidget);
+    expect(find.text('Edit'), findsOneWidget);
+    expect(find.text('Search'), findsOneWidget);
+    expect(find.text('Strings'), findsOneWidget);
+    
+    // Verify APK selection
+    expect(find.text('No APK selected'), findsOneWidget);
   });
 }

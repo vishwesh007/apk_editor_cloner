@@ -149,10 +149,11 @@ void main() {
         ),
       );
 
-      // Check tab bar exists
+      // Check tab bar exists - now has 4 tabs
       expect(find.text('Decompile'), findsOneWidget);
-      expect(find.text('Build'), findsOneWidget);
       expect(find.text('Edit'), findsOneWidget);
+      expect(find.text('Search'), findsOneWidget);
+      expect(find.text('Strings'), findsOneWidget);
     });
 
     testWidgets('Decompile tab shows APK selection', (WidgetTester tester) async {
@@ -172,7 +173,7 @@ void main() {
       expect(find.text('Select APK'), findsOneWidget);
     });
 
-    testWidgets('Decompile options are toggleable', (WidgetTester tester) async {
+    testWidgets('Decompile tab shows decompile button', (WidgetTester tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: MultiProvider(
@@ -184,33 +185,12 @@ void main() {
         ),
       );
 
-      // Find decode sources switch
-      expect(find.text('Decode Sources (DEX → Smali)'), findsOneWidget);
-      expect(find.text('Decode Resources'), findsOneWidget);
+      // Find decompile button
+      expect(find.text('Decompile APK'), findsOneWidget);
+      expect(find.text('Browse'), findsOneWidget);
     });
 
-    testWidgets('Build tab shows source directory selection', (WidgetTester tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MultiProvider(
-            providers: [
-              ChangeNotifierProvider(create: (_) => DeviceProvider()),
-            ],
-            child: const ApkRepackerScreen(),
-          ),
-        ),
-      );
-
-      // Navigate to Build tab
-      await tester.tap(find.text('Build'));
-      await tester.pumpAndSettle();
-
-      // Should show directory selection
-      expect(find.text('Source Directory'), findsOneWidget);
-      expect(find.text('No directory selected'), findsOneWidget);
-    });
-
-    testWidgets('Edit tab shows file browser placeholder', (WidgetTester tester) async {
+    testWidgets('Edit tab shows placeholder when no APK decompiled', (WidgetTester tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: MultiProvider(
@@ -227,8 +207,47 @@ void main() {
       await tester.pumpAndSettle();
 
       // Should show placeholder
-      expect(find.text('No project'), findsOneWidget);
-      expect(find.text('Select a file to edit'), findsOneWidget);
+      expect(find.text('Please decompile an APK first'), findsOneWidget);
+    });
+
+    testWidgets('Search tab shows placeholder when no APK decompiled', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MultiProvider(
+            providers: [
+              ChangeNotifierProvider(create: (_) => DeviceProvider()),
+            ],
+            child: const ApkRepackerScreen(),
+          ),
+        ),
+      );
+
+      // Navigate to Search tab
+      await tester.tap(find.text('Search'));
+      await tester.pumpAndSettle();
+
+      // Should show placeholder
+      expect(find.text('Please decompile an APK first'), findsOneWidget);
+    });
+
+    testWidgets('Strings tab shows placeholder when no APK decompiled', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MultiProvider(
+            providers: [
+              ChangeNotifierProvider(create: (_) => DeviceProvider()),
+            ],
+            child: const ApkRepackerScreen(),
+          ),
+        ),
+      );
+
+      // Navigate to Strings tab
+      await tester.tap(find.text('Strings'));
+      await tester.pumpAndSettle();
+
+      // Should show placeholder
+      expect(find.text('Please decompile an APK first'), findsOneWidget);
     });
   });
 

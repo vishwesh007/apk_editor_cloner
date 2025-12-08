@@ -2,6 +2,7 @@ package com.example.droid_analyst
 
 import android.content.Context
 import android.util.Log
+import com.android.apksig.ApkSigner
 import com.android.tools.smali.baksmali.Baksmali
 import com.android.tools.smali.baksmali.BaksmaliOptions
 import com.android.tools.smali.smali.Smali
@@ -11,9 +12,15 @@ import com.android.tools.smali.dexlib2.Opcodes
 import com.android.tools.smali.dexlib2.dexbacked.DexBackedDexFile
 import com.android.tools.smali.dexlib2.writer.builder.DexBuilder
 import com.android.tools.smali.dexlib2.writer.io.FileDataStore
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.*
 import java.util.zip.*
 import java.util.concurrent.*
+import java.util.regex.*
+import java.security.*
+import java.security.cert.X509Certificate
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 
 /**
  * Exact APK Tool Service matching ApkRepacker's implementation
@@ -576,6 +583,478 @@ class ApkToolService(private val context: Context) {
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to write file: ${e.message}")
+            false
+        }
+    }
+    
+    /**
+     * Sign APK using ApkSigner (from ApkRepacker's SignUtil.java)
+     * Supports V1, V2, and V3 signature schemes
+     */
+    fun signApk(
+        inputApk: String,
+        outputApk: String,
+        minSdkVersion: Int = 21,
+        enableV1: Boolean = true,
+        enableV2: Boolean = true,
+        enableV3: Boolean = false,
+        callback: ProgressCallback? = null
+    ): Boolean {
+        Log.i(TAG, "Signing APK: $inputApk -> $outputApk")
+        callback?.onProgress("Signing APK...", 50)
+        
+        return try {
+            val inputFile = File(inputApk)
+            val outputFile = File(outputApk)
+            
+            if (!inputFile.exists()) {
+                callback?.onError("Input APK not found: $inputApk")
+                return false
+            }
+            
+            // Get or create debug keystore
+            val (privateKey, certificate) = getOrCreateSigningKey()
+            
+            // Build signer config
+            val signerConfig = ApkSigner.SignerConfig.Builder(
+                "DroidAnalyst",
+                privateKey,
+                listOf(certificate)
+            ).build()
+            
+            // Create ApkSigner
+            val apkSignerBuilder = ApkSigner.Builder(listOf(signerConfig))
+                .setInputApk(inputFile)
+                .setOutputApk(outputFile)
+                .setCreatedBy("DroidAnalyst APK Repacker")
+                .setMinSdkVersion(minSdkVersion)
+                .setV1SigningEnabled(enableV1)
+                .setV2SigningEnabled(enableV2)
+                .setV3SigningEnabled(enableV3)
+            
+            // Sign the APK
+            apkSignerBuilder.build().sign()
+            
+            callback?.onProgress("APK signed successfully!", 100)
+            callback?.onComplete(outputApk)
+            Log.i(TAG, "APK signed: ${outputFile.length()} bytes")
+            true
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Signing failed: ${e.message}", e)
+            callback?.onError("Signing failed: ${e.message}")
+            false
+        }
+    }
+    
+    /**
+     * Get or create a signing key for APK signing
+     * Uses BouncyCastle to generate RSA key pair
+     */
+    private fun getOrCreateSigningKey(): Pair<PrivateKey, X509Certificate> {
+        // Add BouncyCastle provider
+        Security.addProvider(BouncyCastleProvider())
+        
+        val keystoreFile = File(context.filesDir, "debug.keystore")
+        val keystorePassword = "android".toCharArray()
+        val keyAlias = "androiddebugkey"
+        val keyPassword = "android".toCharArray()
+        
+        return try {
+            if (keystoreFile.exists()) {
+                // Load existing keystore
+                val keyStore = KeyStore.getInstance("PKCS12")
+                keystoreFile.inputStream().use { keyStore.load(it, keystorePassword) }
+                val privateKey = keyStore.getKey(keyAlias, keyPassword) as PrivateKey
+                val certificate = keyStore.getCertificate(keyAlias) as X509Certificate
+                Pair(privateKey, certificate)
+            } else {
+                // Generate new key pair
+                generateSigningKey(keystoreFile, keystorePassword, keyAlias, keyPassword)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Keystore error, generating new key: ${e.message}")
+            generateSigningKey(keystoreFile, keystorePassword, keyAlias, keyPassword)
+        }
+    }
+    
+    private fun generateSigningKey(
+        keystoreFile: File,
+        keystorePassword: CharArray,
+        keyAlias: String,
+        keyPassword: CharArray
+    ): Pair<PrivateKey, X509Certificate> {
+        Log.i(TAG, "Generating new signing key...")
+        
+        // Generate RSA key pair
+        val keyGen = KeyPairGenerator.getInstance("RSA")
+        keyGen.initialize(2048)
+        val keyPair = keyGen.generateKeyPair()
+        
+        // Create self-signed certificate using BouncyCastle
+        val certBuilder = org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder(
+            org.bouncycastle.asn1.x500.X500Name("CN=DroidAnalyst, OU=Development, O=DroidAnalyst, L=Unknown, ST=Unknown, C=US"),
+            java.math.BigInteger.valueOf(System.currentTimeMillis()),
+            java.util.Date(System.currentTimeMillis() - 86400000L),
+            java.util.Date(System.currentTimeMillis() + 86400000L * 365 * 30), // 30 years
+            org.bouncycastle.asn1.x500.X500Name("CN=DroidAnalyst, OU=Development, O=DroidAnalyst, L=Unknown, ST=Unknown, C=US"),
+            keyPair.public
+        )
+        
+        val signer = org.bouncycastle.operator.jcajce.JcaContentSignerBuilder("SHA256withRSA")
+            .setProvider(BouncyCastleProvider())
+            .build(keyPair.private)
+        
+        val certHolder = certBuilder.build(signer)
+        val certificate = org.bouncycastle.cert.jcajce.JcaX509CertificateConverter()
+            .setProvider(BouncyCastleProvider())
+            .getCertificate(certHolder)
+        
+        // Save to keystore
+        val keyStore = KeyStore.getInstance("PKCS12")
+        keyStore.load(null, keystorePassword)
+        keyStore.setKeyEntry(keyAlias, keyPair.private, keyPassword, arrayOf(certificate))
+        keystoreFile.outputStream().use { keyStore.store(it, keystorePassword) }
+        
+        Log.i(TAG, "Signing key generated and saved")
+        return Pair(keyPair.private, certificate)
+    }
+    
+    /**
+     * Search for text in decompiled files (from ApkRepacker's ExtGrep.java)
+     * Supports regex and case-insensitive search
+     */
+    fun searchInFiles(
+        sourceDir: String,
+        query: String,
+        useRegex: Boolean = false,
+        ignoreCase: Boolean = true,
+        fileExtensions: List<String> = listOf("smali", "xml", "json", "txt")
+    ): List<Map<String, Any>> {
+        Log.i(TAG, "Searching for '$query' in $sourceDir")
+        val results = mutableListOf<Map<String, Any>>()
+        
+        try {
+            val pattern = if (useRegex) {
+                val flags = if (ignoreCase) Pattern.CASE_INSENSITIVE else 0
+                Pattern.compile(query, flags)
+            } else {
+                val flags = if (ignoreCase) Pattern.CASE_INSENSITIVE else 0
+                Pattern.compile(Pattern.quote(query), flags)
+            }
+            
+            val dir = File(sourceDir)
+            dir.walkTopDown()
+                .filter { it.isFile && fileExtensions.any { ext -> it.name.endsWith(".$ext") } }
+                .forEach { file ->
+                    try {
+                        val lines = file.readLines()
+                        lines.forEachIndexed { index, line ->
+                            val matcher = pattern.matcher(line)
+                            while (matcher.find()) {
+                                results.add(mapOf(
+                                    "file" to file.relativeTo(dir).path,
+                                    "line" to line,
+                                    "lineNumber" to (index + 1),
+                                    "matchStart" to matcher.start(),
+                                    "matchEnd" to matcher.end()
+                                ))
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // Skip binary files
+                    }
+                }
+            
+            Log.i(TAG, "Found ${results.size} matches")
+        } catch (e: Exception) {
+            Log.e(TAG, "Search failed: ${e.message}")
+        }
+        
+        return results
+    }
+    
+    /**
+     * Replace text in a file
+     */
+    fun replaceInFile(
+        sourceDir: String,
+        filePath: String,
+        search: String,
+        replace: String,
+        useRegex: Boolean = false,
+        ignoreCase: Boolean = true
+    ): Int {
+        Log.i(TAG, "Replacing '$search' with '$replace' in $filePath")
+        
+        return try {
+            val file = File(sourceDir, filePath)
+            if (!file.exists()) return 0
+            
+            var content = file.readText()
+            val pattern = if (useRegex) {
+                val flags = if (ignoreCase) Pattern.CASE_INSENSITIVE else 0
+                Pattern.compile(search, flags)
+            } else {
+                val flags = if (ignoreCase) Pattern.CASE_INSENSITIVE else 0
+                Pattern.compile(Pattern.quote(search), flags)
+            }
+            
+            val matcher = pattern.matcher(content)
+            var count = 0
+            while (matcher.find()) count++
+            
+            content = matcher.reset().replaceAll(replace)
+            file.writeText(content)
+            
+            Log.i(TAG, "Replaced $count occurrences")
+            count
+        } catch (e: Exception) {
+            Log.e(TAG, "Replace failed: ${e.message}")
+            0
+        }
+    }
+    
+    /**
+     * Get string resources from a decompiled APK
+     * Returns map of string name -> value
+     */
+    fun getStringResources(sourceDir: String, language: String = "default"): Map<String, String> {
+        val results = mutableMapOf<String, String>()
+        
+        try {
+            val resDir = if (language == "default") {
+                File(sourceDir, "res/values/strings.xml")
+            } else {
+                File(sourceDir, "res/values-$language/strings.xml")
+            }
+            
+            if (!resDir.exists()) return results
+            
+            // Simple XML parsing for string resources
+            val content = resDir.readText()
+            val pattern = Pattern.compile("""<string\s+name="([^"]+)"[^>]*>([^<]*)</string>""")
+            val matcher = pattern.matcher(content)
+            
+            while (matcher.find()) {
+                val name = matcher.group(1) ?: continue
+                val value = matcher.group(2) ?: ""
+                results[name] = value
+            }
+            
+            Log.i(TAG, "Found ${results.size} strings for language: $language")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get strings: ${e.message}")
+        }
+        
+        return results
+    }
+    
+    /**
+     * Update a string resource value
+     */
+    fun updateStringResource(
+        sourceDir: String,
+        stringName: String,
+        newValue: String,
+        language: String = "default"
+    ): Boolean {
+        return try {
+            val resDir = if (language == "default") {
+                File(sourceDir, "res/values/strings.xml")
+            } else {
+                File(sourceDir, "res/values-$language/strings.xml")
+            }
+            
+            if (!resDir.exists()) return false
+            
+            var content = resDir.readText()
+            val pattern = Pattern.compile(
+                """(<string\s+name="$stringName"[^>]*>)[^<]*(</string>)"""
+            )
+            
+            val matcher = pattern.matcher(content)
+            if (matcher.find()) {
+                content = matcher.replaceFirst("$1$newValue$2")
+                resDir.writeText(content)
+                Log.i(TAG, "Updated string '$stringName' to '$newValue'")
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to update string: ${e.message}")
+            false
+        }
+    }
+    
+    /**
+     * Get available languages for string resources
+     */
+    fun getAvailableLanguages(sourceDir: String): List<String> {
+        val languages = mutableListOf("default")
+        
+        try {
+            val resDir = File(sourceDir, "res")
+            resDir.listFiles()?.forEach { dir ->
+                if (dir.isDirectory && dir.name.startsWith("values-")) {
+                    val stringsFile = File(dir, "strings.xml")
+                    if (stringsFile.exists()) {
+                        languages.add(dir.name.removePrefix("values-"))
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get languages: ${e.message}")
+        }
+        
+        return languages
+    }
+    
+    /**
+     * Get color resources from decompiled APK
+     */
+    fun getColorResources(sourceDir: String): Map<String, String> {
+        val results = mutableMapOf<String, String>()
+        
+        try {
+            val colorsFile = File(sourceDir, "res/values/colors.xml")
+            if (!colorsFile.exists()) return results
+            
+            val content = colorsFile.readText()
+            val pattern = Pattern.compile("""<color\s+name="([^"]+)"[^>]*>([^<]*)</color>""")
+            val matcher = pattern.matcher(content)
+            
+            while (matcher.find()) {
+                val name = matcher.group(1) ?: continue
+                val value = matcher.group(2) ?: ""
+                results[name] = value
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get colors: ${e.message}")
+        }
+        
+        return results
+    }
+    
+    /**
+     * Update a color resource
+     */
+    fun updateColorResource(sourceDir: String, colorName: String, newValue: String): Boolean {
+        return try {
+            val colorsFile = File(sourceDir, "res/values/colors.xml")
+            if (!colorsFile.exists()) return false
+            
+            var content = colorsFile.readText()
+            val pattern = Pattern.compile(
+                """(<color\s+name="$colorName"[^>]*>)[^<]*(</color>)"""
+            )
+            
+            val matcher = pattern.matcher(content)
+            if (matcher.find()) {
+                content = matcher.replaceFirst("$1$newValue$2")
+                colorsFile.writeText(content)
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to update color: ${e.message}")
+            false
+        }
+    }
+    
+    /**
+     * Get manifest info from decompiled APK
+     */
+    fun getManifestInfo(sourceDir: String): Map<String, Any> {
+        val result = mutableMapOf<String, Any>()
+        
+        try {
+            val manifestFile = File(sourceDir, "AndroidManifest.xml")
+            if (!manifestFile.exists()) return result
+            
+            val content = manifestFile.readText()
+            
+            // Extract package name
+            val pkgPattern = Pattern.compile("""package="([^"]+)"""")
+            val pkgMatcher = pkgPattern.matcher(content)
+            if (pkgMatcher.find()) {
+                result["packageName"] = pkgMatcher.group(1) ?: ""
+            }
+            
+            // Extract version info
+            val verCodePattern = Pattern.compile("""android:versionCode="([^"]+)"""")
+            val verCodeMatcher = verCodePattern.matcher(content)
+            if (verCodeMatcher.find()) {
+                result["versionCode"] = verCodeMatcher.group(1) ?: ""
+            }
+            
+            val verNamePattern = Pattern.compile("""android:versionName="([^"]+)"""")
+            val verNameMatcher = verNamePattern.matcher(content)
+            if (verNameMatcher.find()) {
+                result["versionName"] = verNameMatcher.group(1) ?: ""
+            }
+            
+            // Extract SDK versions
+            val minSdkPattern = Pattern.compile("""android:minSdkVersion="([^"]+)"""")
+            val minSdkMatcher = minSdkPattern.matcher(content)
+            if (minSdkMatcher.find()) {
+                result["minSdkVersion"] = minSdkMatcher.group(1) ?: ""
+            }
+            
+            val targetSdkPattern = Pattern.compile("""android:targetSdkVersion="([^"]+)"""")
+            val targetSdkMatcher = targetSdkPattern.matcher(content)
+            if (targetSdkMatcher.find()) {
+                result["targetSdkVersion"] = targetSdkMatcher.group(1) ?: ""
+            }
+            
+            // Extract permissions
+            val permPattern = Pattern.compile("""<uses-permission[^>]+android:name="([^"]+)"""")
+            val permMatcher = permPattern.matcher(content)
+            val permissions = mutableListOf<String>()
+            while (permMatcher.find()) {
+                permMatcher.group(1)?.let { permissions.add(it) }
+            }
+            result["permissions"] = permissions
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get manifest info: ${e.message}")
+        }
+        
+        return result
+    }
+    
+    /**
+     * Update manifest attributes (package name, version, etc)
+     */
+    fun updateManifestAttribute(sourceDir: String, attribute: String, newValue: String): Boolean {
+        return try {
+            val manifestFile = File(sourceDir, "AndroidManifest.xml")
+            if (!manifestFile.exists()) return false
+            
+            var content = manifestFile.readText()
+            
+            val pattern = when (attribute) {
+                "packageName" -> Pattern.compile("""(package=")[^"]+"""")
+                "versionCode" -> Pattern.compile("""(android:versionCode=")[^"]+"""")
+                "versionName" -> Pattern.compile("""(android:versionName=")[^"]+"""")
+                "minSdkVersion" -> Pattern.compile("""(android:minSdkVersion=")[^"]+"""")
+                "targetSdkVersion" -> Pattern.compile("""(android:targetSdkVersion=")[^"]+"""")
+                else -> return false
+            }
+            
+            val matcher = pattern.matcher(content)
+            if (matcher.find()) {
+                content = matcher.replaceFirst("$1$newValue\"")
+                manifestFile.writeText(content)
+                Log.i(TAG, "Updated manifest $attribute to $newValue")
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to update manifest: ${e.message}")
             false
         }
     }

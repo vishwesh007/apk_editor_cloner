@@ -14,7 +14,7 @@ You must fork the APKRepacker tool from GitHub, analyze its functionality, integ
 ## STEP 1: FORK AND ANALYZE APKREPACKER
 
 1. **Fork the repository**: Find and fork the APKRepacker project from GitHub
-2. https://github.com/MrIkso/ApkRepacker, keep it only to android
+2. https://github.com/MrIkso/ApkRepacker , strictly do try reduce complications as they are there on purpose please.
 3. **Clone locally**: Clone both the original and your fork
 4. **Analyze architecture**:
    - Study the codebase structure
