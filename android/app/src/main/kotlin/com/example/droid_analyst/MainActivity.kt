@@ -72,12 +72,14 @@ class MainActivity : FlutterActivity() {
     
     // APK Tool Service
     private lateinit var apkToolService: ApkToolService
+    private lateinit var apkSignerService: ApkSignerService
     private val APK_TOOL_CHANNEL = "com.droidanalyst/apktool"
     private var apkToolChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
-        // Initialize APK Tool Service
+        // Initialize APK Tool Service and Signer Service
         apkToolService = ApkToolService(applicationContext)
+        apkSignerService = ApkSignerService(applicationContext)
         super.configureFlutterEngine(flutterEngine)
         
         // Main channel for package/device operations
@@ -418,6 +420,72 @@ class MainActivity : FlutterActivity() {
                         result.success(success)
                     } else {
                         result.error("INVALID_ARGUMENT", "sourceDir, filePath and content are required", null)
+                    }
+                }
+                "signApkWithTestKey" -> {
+                    val inputApk = call.argument<String>("inputApk")
+                    val outputApk = call.argument<String>("outputApk")
+                    val minSdkVersion = call.argument<Int>("minSdkVersion") ?: 21
+                    
+                    if (inputApk != null && outputApk != null) {
+                        Thread {
+                            try {
+                                val callback = object : ApkSignerService.SigningCallback {
+                                    override fun onProgress(message: String) {
+                                        runOnUiThread {
+                                            apkToolChannel?.invokeMethod("onProgress", mapOf(
+                                                "message" to message,
+                                                "progress" to 90
+                                            ))
+                                        }
+                                    }
+                                    override fun onError(message: String) {
+                                        runOnUiThread {
+                                            apkToolChannel?.invokeMethod("onError", mapOf("message" to message))
+                                        }
+                                    }
+                                    override fun onComplete(outputPath: String) {
+                                        runOnUiThread {
+                                            apkToolChannel?.invokeMethod("onComplete", mapOf("outputPath" to outputPath))
+                                        }
+                                    }
+                                }
+                                
+                                val success = apkSignerService.signApkWithTestKey(
+                                    File(inputApk), File(outputApk), minSdkVersion, callback
+                                )
+                                runOnUiThread { result.success(success) }
+                            } catch (e: Exception) {
+                                android.util.Log.e("DroidAnalyst", "Sign error: ${e.message}", e)
+                                runOnUiThread { result.error("SIGN_ERROR", e.message, null) }
+                            }
+                        }.start()
+                    } else {
+                        result.error("INVALID_ARGUMENT", "inputApk and outputApk are required", null)
+                    }
+                }
+                "verifyApkSignature" -> {
+                    val apkPath = call.argument<String>("apkPath")
+                    if (apkPath != null) {
+                        Thread {
+                            try {
+                                val signatureInfo = apkSignerService.verifyApkSignature(File(apkPath))
+                                val result_map = mapOf(
+                                    "isValid" to signatureInfo.isValid,
+                                    "v1SchemeSignerName" to signatureInfo.v1SchemeSignerName,
+                                    "v2Verified" to signatureInfo.v2Verified,
+                                    "v3Verified" to signatureInfo.v3Verified,
+                                    "v4Verified" to signatureInfo.v4Verified,
+                                    "errors" to signatureInfo.errors,
+                                    "warnings" to signatureInfo.warnings
+                                )
+                                runOnUiThread { result.success(result_map) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("VERIFY_ERROR", e.message, null) }
+                            }
+                        }.start()
+                    } else {
+                        result.error("INVALID_ARGUMENT", "apkPath is required", null)
                     }
                 }
                 else -> {
