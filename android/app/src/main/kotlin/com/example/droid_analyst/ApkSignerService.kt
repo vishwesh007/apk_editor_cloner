@@ -136,11 +136,21 @@ class ApkSignerService(private val context: Context) {
             signApk(inputApk, outputApk, config, minSdkVersion, callback)
             
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to sign with test key: ${e.message}", e)
+            val errorMsg = when (e) {
+                is java.io.FileNotFoundException -> 
+                    "Test key files not found in assets. Ensure testkey.pk8 and testkey.x509.pem are present."
+                is java.security.GeneralSecurityException ->
+                    "Failed to load test key: Invalid key format or corrupted key file."
+                else ->
+                    "Failed to load test key: ${e.message}"
+            }
             
-            // Fallback: Generate temporary key if test key not available
+            Log.e(TAG, errorMsg, e)
+            
+            // Only fallback to temporary key if explicitly allowed
+            // For production, this should fail rather than generate insecure keys
             try {
-                Log.i(TAG, "Test key not found, generating temporary key...")
+                Log.w(TAG, "Attempting to generate temporary key as fallback...")
                 val (privateKey, certificate) = generateTemporaryKey()
                 val config = SigningConfig(
                     privateKey = privateKey,
@@ -149,7 +159,7 @@ class ApkSignerService(private val context: Context) {
                 signApk(inputApk, outputApk, config, minSdkVersion, callback)
             } catch (genEx: Exception) {
                 Log.e(TAG, "Failed to generate temporary key: ${genEx.message}", genEx)
-                callback?.onError("Signing failed: ${genEx.message}")
+                callback?.onError("$errorMsg Unable to generate fallback key.")
                 false
             }
         }
@@ -184,11 +194,15 @@ class ApkSignerService(private val context: Context) {
     
     /**
      * Load private key from PEM or DER format
+     * Uses mark/reset support checking to avoid stream issues
      */
     private fun loadPrivateKey(inputStream: InputStream): PrivateKey {
+        // Read entire stream into byte array to avoid mark/reset issues
+        val keyBytes = inputStream.readBytes()
+        
         return try {
             // Try PEM format first
-            val pemParser = PEMParser(InputStreamReader(inputStream))
+            val pemParser = PEMParser(InputStreamReader(ByteArrayInputStream(keyBytes)))
             val pemObject = pemParser.readObject()
             pemParser.close()
             
@@ -199,8 +213,6 @@ class ApkSignerService(private val context: Context) {
                 }
                 else -> {
                     // Try DER format (PKCS8)
-                    inputStream.reset()
-                    val keyBytes = inputStream.readBytes()
                     val spec = PKCS8EncodedKeySpec(keyBytes)
                     val keyFactory = KeyFactory.getInstance("RSA")
                     keyFactory.generatePrivate(spec)
@@ -208,11 +220,13 @@ class ApkSignerService(private val context: Context) {
             }
         } catch (e: Exception) {
             // Fallback to PKCS8 DER format
-            inputStream.reset()
-            val keyBytes = inputStream.readBytes()
-            val spec = PKCS8EncodedKeySpec(keyBytes)
-            val keyFactory = KeyFactory.getInstance("RSA")
-            keyFactory.generatePrivate(spec)
+            try {
+                val spec = PKCS8EncodedKeySpec(keyBytes)
+                val keyFactory = KeyFactory.getInstance("RSA")
+                keyFactory.generatePrivate(spec)
+            } catch (derEx: Exception) {
+                throw IllegalArgumentException("Failed to parse private key in PEM or DER format", derEx)
+            }
         }
     }
     
