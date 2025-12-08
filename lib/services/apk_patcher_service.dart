@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
 import 'android_manifest_parser.dart';

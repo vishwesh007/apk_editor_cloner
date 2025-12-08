@@ -160,7 +160,7 @@ class _FridaScreenState extends State<FridaScreen> {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: DropdownButtonFormField<String>(
-                                  value: _selectedPackage,
+                                  initialValue: _selectedPackage,
                                   decoration: const InputDecoration(
                                     isDense: true,
                                     border: OutlineInputBorder(),
@@ -498,13 +498,13 @@ class _FridaScreenState extends State<FridaScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.all(16),
+                    const Padding(
+                      padding: EdgeInsets.all(16),
                       child: Row(
                         children: [
-                          const Icon(Icons.code, size: 20),
-                          const SizedBox(width: 8),
-                          const Text(
+                          Icon(Icons.code, size: 20),
+                          SizedBox(width: 8),
+                          Text(
                             'Frida Scripts Library',
                             style: TextStyle(
                               fontSize: 16,
@@ -702,7 +702,7 @@ class _FridaScreenState extends State<FridaScreen> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<ScriptCategory>(
-              value: selectedCategory,
+              initialValue: selectedCategory,
               decoration: const InputDecoration(
                 labelText: 'Category',
                 border: OutlineInputBorder(),

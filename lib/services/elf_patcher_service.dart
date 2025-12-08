@@ -117,7 +117,7 @@ class ElfPatcherService {
     final neededEntries = <int>[];
     int? nullEntryOffset;
     
-    final dynamicEntrySize = 16; // Dyn64 entry size
+    const dynamicEntrySize = 16; // Dyn64 entry size
     final numDynEntries = dynamicSize! ~/ dynamicEntrySize;
     
     for (int i = 0; i < numDynEntries; i++) {
@@ -151,7 +151,7 @@ class ElfPatcherService {
     // Strategy: Add "libfrida-gadget.so" to string table and add a new DT_NEEDED entry
     // DT_NEEDED uses actual library filename, not Java loadLibrary name
     
-    final gadgetName = '$gadgetLibName\x00';  // libfrida-gadget.so\0
+    const gadgetName = '$gadgetLibName\x00';  // libfrida-gadget.so\0
     final gadgetNameBytes = gadgetName.codeUnits;
     
     // Find file offset of string table
@@ -313,7 +313,7 @@ class ElfPatcherService {
     final neededEntries = <int>[];
     int? nullEntryOffset;
     
-    final dynamicEntrySize = 8; // Dyn32 entry size
+    const dynamicEntrySize = 8; // Dyn32 entry size
     final numDynEntries = dynamicSize! ~/ dynamicEntrySize;
     
     for (int i = 0; i < numDynEntries; i++) {
@@ -367,7 +367,7 @@ class ElfPatcherService {
     }
     
     // Check if string already exists
-    final gadgetName = '$gadgetLibName\x00';  // libfrida-gadget.so\0
+    const gadgetName = '$gadgetLibName\x00';  // libfrida-gadget.so\0
     final gadgetNameBytes = gadgetName.codeUnits;
     
     final existingStrings = String.fromCharCodes(

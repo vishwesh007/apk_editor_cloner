@@ -102,11 +102,80 @@ class _ApkRepackerScreenState extends State<ApkRepackerScreen>
   }
 
   Future<void> _selectApkForDecompile() async {
-    // Show installed apps to select from
+    // Show dialog to select between installed apps or file picker
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Select APK Source', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 24),
+            ListTile(
+              leading: const Icon(Icons.android),
+              title: const Text('Installed Apps'),
+              subtitle: const Text('Select from device apps'),
+              onTap: () => Navigator.pop(context, 'installed'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.folder),
+              title: const Text('Browse Files'),
+              subtitle: const Text('Select APK from storage'),
+              onTap: () => Navigator.pop(context, 'browse'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (choice == 'installed') {
+      await _selectFromInstalledApps();
+    } else if (choice == 'browse') {
+      await _selectFromBrowse();
+    }
+  }
+
+  Future<void> _selectFromInstalledApps() async {
     final deviceProvider = context.read<DeviceProvider>();
+    
+    // Show loading indicator while fetching apps
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Loading installed apps...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    
+    // Force refresh apps list
+    await deviceProvider.loadInstalledApps(forceRefresh: true);
+    
+    // Close loading dialog
+    if (mounted) Navigator.of(context).pop();
+    
     final apps = deviceProvider.installedApps
         .where((app) => !(app['isSystem'] as bool? ?? false))
         .toList();
+    
+    debugPrint('[APKRepacker] Loaded ${apps.length} user apps');
+
+    if (apps.isEmpty) {
+      _showError('No user apps found on device. Make sure you have installed apps.');
+      return;
+    }
 
     final selected = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
@@ -126,23 +195,41 @@ class _ApkRepackerScreenState extends State<ApkRepackerScreen>
               ),
             ),
             Expanded(
-              child: ListView.builder(
-                controller: scrollController,
-                itemCount: apps.length,
-                itemBuilder: (context, index) {
-                  final app = apps[index];
-                  return ListTile(
-                    leading: const Icon(Icons.android),
-                    title: Text(app['appName'] as String? ?? 'Unknown'),
-                    subtitle: Text(app['packageName'] as String? ?? ''),
-                    trailing: Text(
-                      _formatSize(File(app['sourceDir'] as String? ?? '').lengthSync()),
-                      style: Theme.of(context).textTheme.bodySmall,
+              child: apps.isEmpty
+                  ? const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.android, size: 48, color: Colors.grey),
+                          SizedBox(height: 16),
+                          Text('No user apps found'),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      controller: scrollController,
+                      itemCount: apps.length,
+                      itemBuilder: (context, index) {
+                        final app = apps[index];
+                        final sourceDir = app['sourceDir'] as String? ?? '';
+                        int fileSize = 0;
+                        try {
+                          fileSize = File(sourceDir).lengthSync();
+                        } catch (e) {
+                          // File doesn't exist or can't be read
+                        }
+                        return ListTile(
+                          leading: const Icon(Icons.android),
+                          title: Text(app['appName'] as String? ?? 'Unknown'),
+                          subtitle: Text(app['packageName'] as String? ?? ''),
+                          trailing: Text(
+                            _formatSize(fileSize),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                          onTap: () => Navigator.pop(context, app),
+                        );
+                      },
                     ),
-                    onTap: () => Navigator.pop(context, app),
-                  );
-                },
-              ),
             ),
           ],
         ),
@@ -157,11 +244,129 @@ class _ApkRepackerScreenState extends State<ApkRepackerScreen>
     }
   }
 
+  Future<void> _selectFromBrowse() async {
+    // Browse multiple common directories for APK files
+    final List<String> searchDirs = [
+      '/storage/emulated/0/Download',
+      '/storage/emulated/0/Documents',
+      '/storage/emulated/0/DroidAnalyst',
+      '/storage/emulated/0/APK',
+      '/sdcard/Download',
+    ];
+    
+    final List<FileSystemEntity> apkFiles = [];
+
+    // Show loading while scanning
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Scanning for APK files...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      for (final dirPath in searchDirs) {
+        final dir = Directory(dirPath);
+        if (await dir.exists()) {
+          final files = await dir.list().toList();
+          apkFiles.addAll(
+            files.where((f) => f.path.toLowerCase().endsWith('.apk')).toList(),
+          );
+        }
+      }
+      debugPrint('[APKRepacker] Found ${apkFiles.length} APK files');
+    } catch (e) {
+      debugPrint('[APKRepacker] Error scanning directories: $e');
+    }
+    
+    // Close loading dialog
+    if (mounted) Navigator.of(context).pop();
+
+    if (apkFiles.isEmpty) {
+      _showError('No APK files found. Place APK files in Download or Documents folder.');
+      return;
+    }
+
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        maxChildSize: 0.9,
+        minChildSize: 0.5,
+        expand: false,
+        builder: (context, scrollController) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Select APK File',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+            ),
+            Expanded(
+              child: ListView.builder(
+                controller: scrollController,
+                itemCount: apkFiles.length,
+                itemBuilder: (context, index) {
+                  final file = apkFiles[index];
+                  final fileName = file.path.split('/').last;
+                  int fileSize = 0;
+                  try {
+                    fileSize = File(file.path).lengthSync();
+                  } catch (e) {
+                    // Can't read size
+                  }
+                  return ListTile(
+                    leading: const Icon(Icons.file_present),
+                    title: Text(fileName),
+                    subtitle: Text(file.path),
+                    trailing: Text(
+                      _formatSize(fileSize),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    onTap: () => Navigator.pop(context, file.path),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (selected != null) {
+      setState(() {
+        _selectedApkPath = selected;
+        _outputDir = _apkToolService.getDefaultOutputDir(_selectedApkPath!);
+      });
+    }
+  }
+
   Future<void> _startDecompile() async {
     if (_selectedApkPath == null || _outputDir == null) {
       _showError('Please select an APK and output directory');
       return;
     }
+
+    debugPrint('[APKRepacker] Starting decompile:');
+    debugPrint('[APKRepacker]   APK: $_selectedApkPath');
+    debugPrint('[APKRepacker]   Output: $_outputDir');
+    debugPrint('[APKRepacker]   Decode sources: $_decodeSources');
+    debugPrint('[APKRepacker]   Decode resources: $_decodeResources');
 
     setState(() {
       _isDecompiling = true;
@@ -169,12 +374,14 @@ class _ApkRepackerScreenState extends State<ApkRepackerScreen>
       _decompileStatus = 'Starting...';
     });
 
-    await _apkToolService.decodeApk(
+    final success = await _apkToolService.decodeApk(
       apkPath: _selectedApkPath!,
       outputDir: _outputDir!,
       decodeSources: _decodeSources,
       decodeResources: _decodeResources,
     );
+    
+    debugPrint('[APKRepacker] Decompile returned: $success');
   }
 
   Future<void> _selectSourceDir() async {

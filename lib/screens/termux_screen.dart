@@ -30,49 +30,49 @@ class _TermuxScreenState extends State<TermuxScreen> with SingleTickerProviderSt
   
   // Quick commands for common operations
   final List<_QuickCommand> _quickCommands = [
-    _QuickCommand(
+    const _QuickCommand(
       name: 'Install Frida Tools',
       icon: Icons.download,
       command: 'pkg update -y && pkg install -y python && pip install frida-tools',
       description: 'Install Frida CLI tools via pip',
     ),
-    _QuickCommand(
+    const _QuickCommand(
       name: 'Start Frida Server',
       icon: Icons.play_arrow,
       command: 'su -c "/data/local/tmp/frida-server -l 0.0.0.0:27042 &"',
       description: 'Start frida-server (requires root)',
     ),
-    _QuickCommand(
+    const _QuickCommand(
       name: 'List Processes',
       icon: Icons.list,
       command: 'frida-ps -U',
       description: 'List running processes via Frida',
     ),
-    _QuickCommand(
+    const _QuickCommand(
       name: 'Install APKTool',
       icon: Icons.build,
       command: 'pkg install -y apktool',
       description: 'Install APKTool for APK decompilation',
     ),
-    _QuickCommand(
+    const _QuickCommand(
       name: 'Install Jadx',
       icon: Icons.code,
       command: 'pkg install -y jadx',
       description: 'Install JADX for Java decompilation',
     ),
-    _QuickCommand(
+    const _QuickCommand(
       name: 'Check Root',
       icon: Icons.security,
       command: 'su -c "id"',
       description: 'Check if device has root access',
     ),
-    _QuickCommand(
+    const _QuickCommand(
       name: 'Install Objection',
       icon: Icons.shield,
       command: 'pip install objection',
       description: 'Install Objection toolkit',
     ),
-    _QuickCommand(
+    const _QuickCommand(
       name: 'Update Packages',
       icon: Icons.refresh,
       command: 'pkg update -y && pkg upgrade -y',
@@ -82,7 +82,7 @@ class _TermuxScreenState extends State<TermuxScreen> with SingleTickerProviderSt
   
   // Script templates
   final List<_ScriptTemplate> _scriptTemplates = [
-    _ScriptTemplate(
+    const _ScriptTemplate(
       name: 'Frida Spawn Script',
       description: 'Spawn app with Frida and run script',
       content: '''#!/data/data/com.termux/files/usr/bin/bash
@@ -100,7 +100,7 @@ fi
 frida -U -f \$PACKAGE -l \$SCRIPT --no-pause
 ''',
     ),
-    _ScriptTemplate(
+    const _ScriptTemplate(
       name: 'APK Decompile Script',
       description: 'Decompile APK with apktool',
       content: '''#!/data/data/com.termux/files/usr/bin/bash
@@ -119,7 +119,7 @@ apktool d "\$APK_PATH" -o "\$OUTPUT_DIR" -f
 echo "Decompiled to: \$OUTPUT_DIR"
 ''',
     ),
-    _ScriptTemplate(
+    const _ScriptTemplate(
       name: 'Frida Server Manager',
       description: 'Start/stop frida-server with root',
       content: '''#!/data/data/com.termux/files/usr/bin/bash
@@ -151,7 +151,7 @@ case \$ACTION in
 esac
 ''',
     ),
-    _ScriptTemplate(
+    const _ScriptTemplate(
       name: 'SSL Pinning Bypass',
       description: 'Run SSL pinning bypass script',
       content: '''#!/data/data/com.termux/files/usr/bin/bash
@@ -711,7 +711,7 @@ frida -U -f \$PACKAGE -l /tmp/ssl_bypass.js --no-pause
 
   void _showCreateScriptDialog(_ScriptTemplate template) {
     final nameController = TextEditingController(
-      text: template.name.toLowerCase().replaceAll(' ', '_') + '.sh',
+      text: '${template.name.toLowerCase().replaceAll(' ', '_')}.sh',
     );
     
     showDialog(

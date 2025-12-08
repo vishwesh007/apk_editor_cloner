@@ -6,7 +6,7 @@ import '../services/apk_analyzer_service.dart';
 class AnalysisProvider extends ChangeNotifier {
   final ApkAnalyzerService _analyzerService = ApkAnalyzerService();
 
-  List<ApkInfo> _analyzedApks = [];
+  final List<ApkInfo> _analyzedApks = [];
   ApkInfo? _currentApk;
   bool _isAnalyzing = false;
   double _progress = 0;

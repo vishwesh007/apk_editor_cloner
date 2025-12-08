@@ -59,7 +59,7 @@ class _InstalledAppsScreenState extends State<InstalledAppsScreen>
   }
 
   void _applyFilters() {
-    var filtered = _allApps.where((app) {
+    final filtered = _allApps.where((app) {
       // Filter system apps
       if (!_showSystemApps && app.isSystem) return false;
       

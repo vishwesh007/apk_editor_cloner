@@ -10,12 +10,12 @@ void main() {
     await service.init();
     
     // Find a valid APK to test with
-    final apkPath = 'netguard_original.apk'; // Relative to project root
+    const apkPath = 'netguard_original.apk'; // Relative to project root
     if (!File(apkPath).existsSync()) {
       fail('Test APK not found at $apkPath');
     }
     
-    final outputPath = 'test_output_patched.apk';
+    const outputPath = 'test_output_patched.apk';
     
     print('Starting injection on $apkPath...');
     

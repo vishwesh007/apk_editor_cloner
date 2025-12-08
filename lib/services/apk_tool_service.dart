@@ -180,14 +180,14 @@ class ApkToolService {
   /// Generate default output directory for an APK
   String getDefaultOutputDir(String apkPath) {
     final apkName = apkPath.split('/').last.replaceAll('.apk', '');
-    final downloadsDir = '/storage/emulated/0/Download';
+    const downloadsDir = '/storage/emulated/0/Download';
     return '$downloadsDir/${apkName}_decompiled';
   }
 
   /// Generate default output APK path for a source directory
   String getDefaultOutputApk(String sourceDir) {
     final dirName = sourceDir.split('/').last.replaceAll('_decompiled', '');
-    final downloadsDir = '/storage/emulated/0/Download';
+    const downloadsDir = '/storage/emulated/0/Download';
     return '$downloadsDir/${dirName}_rebuilt.apk';
   }
 

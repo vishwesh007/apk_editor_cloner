@@ -26,7 +26,7 @@ class _GadgetInjectionScreenState extends State<GadgetInjectionScreen> {
   String _selectedMode = FridaGadgetService.modeListen;
   bool _showToast = true; // Default to true as per request
   bool _isProcessing = false;
-  List<String> _logs = [];
+  final List<String> _logs = [];
   
   // Architecture selection
   final Map<String, bool> _selectedArchs = {
@@ -157,11 +157,11 @@ class _GadgetInjectionScreenState extends State<GadgetInjectionScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Row(
+        title: const Row(
           children: [
-            const Icon(Icons.check_circle, color: Colors.green),
-            const SizedBox(width: 8),
-            const Text('Injection Successful'),
+            Icon(Icons.check_circle, color: Colors.green),
+            SizedBox(width: 8),
+            Text('Injection Successful'),
           ],
         ),
         content: SingleChildScrollView(
@@ -169,7 +169,7 @@ class _GadgetInjectionScreenState extends State<GadgetInjectionScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Patched APK saved to:'),
+              const Text('Patched APK saved to:'),
               const SizedBox(height: 4),
               Container(
                 padding: const EdgeInsets.all(8),
@@ -271,7 +271,7 @@ class _GadgetInjectionScreenState extends State<GadgetInjectionScreen> {
       // On desktop, show path input dialog
       final path = await showDialog<String>(
         context: context,
-        builder: (ctx) => _PathInputDialog(
+        builder: (ctx) => const _PathInputDialog(
           title: 'Select APK',
           hint: 'Enter path to APK file',
         ),
@@ -307,16 +307,16 @@ class _GadgetInjectionScreenState extends State<GadgetInjectionScreen> {
             // Info Card
             Card(
               color: Colors.blue.shade900.withOpacity(0.3),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
+              child: const Padding(
+                padding: EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    const Icon(Icons.info_outline, color: Colors.blue),
-                    const SizedBox(width: 12),
+                    Icon(Icons.info_outline, color: Colors.blue),
+                    SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
+                        children: [
                           Text(
                             'Frida Gadget Injection',
                             style: TextStyle(fontWeight: FontWeight.bold),
@@ -601,11 +601,11 @@ class _GadgetInjectionScreenState extends State<GadgetInjectionScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Frida Gadget Help'),
-        content: SingleChildScrollView(
+        content: const SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
-            children: const [
+            children: [
               Text(
                 'What is Frida Gadget?',
                 style: TextStyle(fontWeight: FontWeight.bold),

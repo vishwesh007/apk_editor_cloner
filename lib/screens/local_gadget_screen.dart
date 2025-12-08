@@ -118,8 +118,8 @@ class _LocalGadgetScreenState extends State<LocalGadgetScreen> {
     final config = app['gadgetConfig'] as Map<String, dynamic>?;
     final dynamicPort = app['gadgetPort'] ?? config?['port'];
     final port = switch (dynamicPort) {
-      int value => value,
-      String value => int.tryParse(value) ?? 27042,
+      final int value => value,
+      final String value => int.tryParse(value) ?? 27042,
       _ => 27042,
     };
     final address = config?['address']?.toString();

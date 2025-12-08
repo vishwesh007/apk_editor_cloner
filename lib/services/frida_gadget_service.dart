@@ -818,7 +818,7 @@ console.log('[FRIDA-TOAST] Script initialization complete');
                           : null);
       
       String? apksignerPath;
-      String keystorePath = '$_workDir/debug.keystore';
+      final String keystorePath = '$_workDir/debug.keystore';
       
       if (sdkPath != null) {
         final buildToolsDir = Directory('$sdkPath/build-tools');
@@ -1138,7 +1138,7 @@ console.log('[FRIDA-TOAST] Script initialization complete');
     final signerBlock = _createV2SignerBlock(signedData, signature.bytes, publicKey);
     
     // Create the ID-value pair for v2 signature (ID = 0x7109871a)
-    final v2SignatureId = 0x7109871a;
+    const v2SignatureId = 0x7109871a;
     final idValuePair = _createIdValuePair(v2SignatureId, signerBlock);
     
     // Calculate block size

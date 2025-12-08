@@ -36,8 +36,8 @@ class ApkAnalyzerService {
       List<String> services = [];
       List<String> receivers = [];
       List<String> providers = [];
-      List<String> nativeLibraries = [];
-      List<SuspiciousIndicator> suspiciousIndicators = [];
+      final List<String> nativeLibraries = [];
+      final List<SuspiciousIndicator> suspiciousIndicators = [];
       Map<String, List<String>> extractedStrings = {};
 
       // Find and parse AndroidManifest.xml using pure Dart parser

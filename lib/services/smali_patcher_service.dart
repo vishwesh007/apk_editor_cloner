@@ -57,7 +57,7 @@ class SmaliPatcherService {
   /// Convert class name to smali file path
   Future<String?> _findSmaliFile(String smaliDir, String className) async {
     // Convert com.example.App to com/example/App.smali
-    final relativePath = className.replaceAll('.', '/') + '.smali';
+    final relativePath = '${className.replaceAll('.', '/')}.smali';
     
     // Check in smali directory and smali_classesN directories
     final candidates = [
@@ -226,7 +226,7 @@ class SmaliPatcherService {
       final prefix = content.substring(0, insertPoint);
       final suffix = content.substring(insertPoint);
       
-      final injection = '\n\n    # Frida Gadget injection\n$loadGadgetSmali    # End Frida Gadget injection\n';
+      const injection = '\n\n    # Frida Gadget injection\n$loadGadgetSmali    # End Frida Gadget injection\n';
       
       // Also need to ensure there's a v0 local available
       // Find .locals and ensure it's at least 1
@@ -259,7 +259,7 @@ class SmaliPatcherService {
         final prefix = content.substring(0, endOfClass);
         final suffix = content.substring(endOfClass);
         
-        final clinit = '''
+        const clinit = '''
 
 # Frida Gadget injection - auto-generated static initializer
 .method static constructor <clinit>()V
@@ -277,7 +277,7 @@ $loadGadgetSmali
       final prefix = content.substring(0, insertPoint);
       final suffix = content.substring(insertPoint);
       
-      final clinit = '''
+      const clinit = '''
 
 # Frida Gadget injection - auto-generated static initializer
 .method static constructor <clinit>()V

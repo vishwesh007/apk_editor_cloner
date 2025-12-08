@@ -345,11 +345,11 @@ class ApkToolService(private val context: Context) {
             
             // Assemble each file using thread pool (DexEncoder.smali2Dex line 29-75)
             val executor = Executors.newFixedThreadPool(options.jobs)
-            val tasks = mutableListOf<Future<Boolean>>()
+            val tasks = mutableListOf<Future<*>>()
             var hasErrors = false
             
             for (smaliFile in smaliFiles) {
-                tasks.add(executor.submit {
+                tasks.add(executor.submit<Boolean> {
                     try {
                         Smali.assemble(options, smaliFile.parent!!, File(context.cacheDir, "${smaliFile.nameWithoutExtension}.dex").absolutePath)
                         true
@@ -363,7 +363,8 @@ class ApkToolService(private val context: Context) {
             // Wait for all tasks
             for (task in tasks) {
                 try {
-                    if (!task.get()) {
+                    val result = task.get()
+                    if (result != true) {
                         hasErrors = true
                     }
                 } catch (e: Exception) {

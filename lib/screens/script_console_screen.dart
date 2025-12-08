@@ -519,11 +519,11 @@ Java.perform(function() {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Row(
+        title: const Row(
           children: [
-            const Icon(Icons.memory, color: Colors.deepPurple),
-            const SizedBox(width: 8),
-            const Text('Inject with Script'),
+            Icon(Icons.memory, color: Colors.deepPurple),
+            SizedBox(width: 8),
+            Text('Inject with Script'),
           ],
         ),
         content: Column(
@@ -810,14 +810,14 @@ Java.perform(function() {
             width: double.infinity,
             padding: const EdgeInsets.all(12),
             color: Colors.blue.withOpacity(0.1),
-            child: Column(
+            child: const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.info_outline, color: Colors.blue, size: 18),
-                    const SizedBox(width: 8),
-                    const Expanded(
+                    Icon(Icons.info_outline, color: Colors.blue, size: 18),
+                    SizedBox(width: 8),
+                    Expanded(
                       child: Text(
                         'Script Execution Modes',
                         style: TextStyle(
@@ -829,8 +829,8 @@ Java.perform(function() {
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                const Text(
+                SizedBox(height: 8),
+                Text(
                   '• Inject: Embeds script into APK and re-installs (recommended)\n'
                   '• Run: Sends script to connected gadget (requires Frida client)',
                   style: TextStyle(fontSize: 11, color: Colors.blue),
