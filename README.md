@@ -83,6 +83,27 @@ When running on Windows/macOS/Linux:
 - Debug keystore signing for testing
 - One-click patch, sign, and install workflow
 
+### 🔧 APK Repacker (ApkTool Integration)
+- **Full APK decompilation and rebuild capabilities**
+- Decompile APK to smali source code
+- Decode resources and manifest to human-readable format
+- Edit decompiled files (smali, XML, resources)
+- Rebuild modified APK from source
+- Native Android implementation using Baksmali/Smali libraries
+- File browser for decompiled projects
+
+### 🔐 APK Signing (Official Android apksig Library)
+- **Complete signing infrastructure with all modern signature schemes**
+- APK Signature Scheme v1 (JAR signing) - All Android versions
+- APK Signature Scheme v2 - Whole-file signature (Android 7.0+)
+- APK Signature Scheme v3 - Key rotation support (Android 9.0+)
+- APK Signature Scheme v4 - Streaming signature (Android 11+)
+- Built-in test key for development and debugging
+- Custom keystore support (JKS, PKCS12, BKS)
+- Signature verification with detailed error reporting
+- Self-signed certificate generation
+- See [APK_SIGNING_GUIDE.md](APK_SIGNING_GUIDE.md) for detailed documentation
+
 ### 📊 Event Capture
 - Real-time event stream from Frida hooks
 - Filter events by type
