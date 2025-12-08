@@ -191,6 +191,51 @@ class ApkToolService {
     return '$downloadsDir/${dirName}_rebuilt.apk';
   }
 
+  /// Sign an APK file with test key
+  /// 
+  /// [inputApk] - Path to the unsigned APK
+  /// [outputApk] - Path for the signed APK
+  /// [minSdkVersion] - Minimum SDK version for signing
+  /// 
+  /// Returns true on success
+  Future<bool> signApkWithTestKey({
+    required String inputApk,
+    required String outputApk,
+    int minSdkVersion = 21,
+  }) async {
+    try {
+      final result = await _channel.invokeMethod<bool>('signApkWithTestKey', {
+        'inputApk': inputApk,
+        'outputApk': outputApk,
+        'minSdkVersion': minSdkVersion,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      _errorController.add('Signing failed: ${e.message}');
+      return false;
+    }
+  }
+
+  /// Verify APK signature
+  /// 
+  /// [apkPath] - Path to the APK to verify
+  /// 
+  /// Returns signature information
+  Future<ApkSignatureInfo?> verifyApkSignature(String apkPath) async {
+    try {
+      final result = await _channel.invokeMethod<Map>('verifyApkSignature', {
+        'apkPath': apkPath,
+      });
+      
+      if (result == null) return null;
+      
+      return ApkSignatureInfo.fromMap(result.cast<String, dynamic>());
+    } on PlatformException catch (e) {
+      _errorController.add('Signature verification failed: ${e.message}');
+      return null;
+    }
+  }
+
   void dispose() {
     _progressController.close();
     _errorController.close();
@@ -257,4 +302,65 @@ class ApkFileInfo {
           [],
     );
   }
+}
+
+/// APK signature information
+class ApkSignatureInfo {
+  final bool isValid;
+  final String? v1SchemeSignerName;
+  final bool v2Verified;
+  final bool v3Verified;
+  final bool v4Verified;
+  final List<String> errors;
+  final List<String> warnings;
+
+  ApkSignatureInfo({
+    required this.isValid,
+    this.v1SchemeSignerName,
+    this.v2Verified = false,
+    this.v3Verified = false,
+    this.v4Verified = false,
+    this.errors = const [],
+    this.warnings = const [],
+  });
+
+  factory ApkSignatureInfo.fromMap(Map<String, dynamic> map) {
+    return ApkSignatureInfo(
+      isValid: map['isValid'] as bool? ?? false,
+      v1SchemeSignerName: map['v1SchemeSignerName'] as String?,
+      v2Verified: map['v2Verified'] as bool? ?? false,
+      v3Verified: map['v3Verified'] as bool? ?? false,
+      v4Verified: map['v4Verified'] as bool? ?? false,
+      errors: (map['errors'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
+      warnings: (map['warnings'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
+    );
+  }
+
+  /// Get a human-readable summary of the signature status
+  String get summary {
+    if (!isValid) {
+      return 'Invalid signature: ${errors.join(', ')}';
+    }
+    
+    final schemes = <String>[];
+    if (v1SchemeSignerName != null) schemes.add('v1');
+    if (v2Verified) schemes.add('v2');
+    if (v3Verified) schemes.add('v3');
+    if (v4Verified) schemes.add('v4');
+    
+    if (schemes.isEmpty) {
+      return 'No valid signature schemes found';
+    }
+    
+    return 'Valid signature (${schemes.join(', ')})';
+  }
+  
+  /// Check if APK uses modern signature schemes (v2+)
+  bool get hasModernSignature => v2Verified || v3Verified || v4Verified;
 }
