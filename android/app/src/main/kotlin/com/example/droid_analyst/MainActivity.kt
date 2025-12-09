@@ -56,6 +56,7 @@ class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.example.droid_analyst/android"
     private val LOCAL_GADGET_CHANNEL = "com.droidanalyst/local_gadget"
     private val TERMUX_CHANNEL = "com.droidanalyst/termux"
+    private val ANTISPLIT_CHANNEL = "com.droidanalyst/antisplit"
     
     // For local socket connection to gadget
     private var gadgetSocket: LocalSocket? = null
@@ -74,10 +75,15 @@ class MainActivity : FlutterActivity() {
     private lateinit var apkToolService: ApkToolService
     private val APK_TOOL_CHANNEL = "com.droidanalyst/apktool"
     private var apkToolChannel: MethodChannel? = null
+    
+    // AntiSplit Service
+    private lateinit var antiSplitService: AntiSplitService
+    private var antiSplitChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         // Initialize APK Tool Service
         apkToolService = ApkToolService(applicationContext)
+        antiSplitService = AntiSplitService(applicationContext)
         super.configureFlutterEngine(flutterEngine)
         
         // Main channel for package/device operations
@@ -612,6 +618,170 @@ class MainActivity : FlutterActivity() {
                         result.success(success)
                     } else {
                         result.error("INVALID_ARGUMENT", "sourceDir, attribute and newValue are required", null)
+                    }
+                }
+                else -> {
+                    result.notImplemented()
+                }
+            }
+        }
+        
+        // AntiSplit channel for APK splitting/merging operations
+        antiSplitChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ANTISPLIT_CHANNEL)
+        antiSplitChannel?.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "mergeSplitApk" -> {
+                    val inputPath = call.argument<String>("inputPath")
+                    val outputPath = call.argument<String>("outputPath")
+                    val signAfterMerge = call.argument<Boolean>("signAfterMerge") ?: true
+                    val splitType = call.argument<String>("splitType") ?: "apks"
+                    
+                    if (inputPath != null && outputPath != null) {
+                        Thread {
+                            try {
+                                val callback = object : AntiSplitService.ProgressCallback {
+                                    override fun onProgress(message: String, progress: Int) {
+                                        runOnUiThread {
+                                            antiSplitChannel?.invokeMethod("onProgress", mapOf(
+                                                "message" to message,
+                                                "progress" to progress
+                                            ))
+                                        }
+                                    }
+                                    override fun onError(message: String) {
+                                        runOnUiThread {
+                                            antiSplitChannel?.invokeMethod("onError", mapOf("message" to message))
+                                        }
+                                    }
+                                    override fun onComplete(outputPath: String) {
+                                        runOnUiThread {
+                                            antiSplitChannel?.invokeMethod("onComplete", mapOf("outputPath" to outputPath))
+                                        }
+                                    }
+                                }
+                                
+                                val mergeResult = antiSplitService.mergeSplitApk(
+                                    inputPath, outputPath, signAfterMerge, splitType, callback
+                                )
+                                runOnUiThread { result.success(mergeResult) }
+                            } catch (e: Exception) {
+                                android.util.Log.e("DroidAnalyst", "Merge error: ${e.message}", e)
+                                runOnUiThread { result.error("MERGE_ERROR", e.message, null) }
+                            }
+                        }.start()
+                    } else {
+                        result.error("INVALID_ARGUMENT", "inputPath and outputPath are required", null)
+                    }
+                }
+                "splitApk" -> {
+                    val inputPath = call.argument<String>("inputPath")
+                    val outputDir = call.argument<String>("outputDir")
+                    val splitByDensity = call.argument<Boolean>("splitByDensity") ?: true
+                    val splitByAbi = call.argument<Boolean>("splitByAbi") ?: true
+                    val splitByLanguage = call.argument<Boolean>("splitByLanguage") ?: true
+                    
+                    if (inputPath != null && outputDir != null) {
+                        Thread {
+                            try {
+                                val callback = object : AntiSplitService.ProgressCallback {
+                                    override fun onProgress(message: String, progress: Int) {
+                                        runOnUiThread {
+                                            antiSplitChannel?.invokeMethod("onProgress", mapOf(
+                                                "message" to message,
+                                                "progress" to progress
+                                            ))
+                                        }
+                                    }
+                                    override fun onError(message: String) {
+                                        runOnUiThread {
+                                            antiSplitChannel?.invokeMethod("onError", mapOf("message" to message))
+                                        }
+                                    }
+                                    override fun onComplete(outputPath: String) {
+                                        runOnUiThread {
+                                            antiSplitChannel?.invokeMethod("onComplete", mapOf("outputPath" to outputPath))
+                                        }
+                                    }
+                                }
+                                
+                                val splitResult = antiSplitService.splitApk(
+                                    inputPath, outputDir, splitByDensity, splitByAbi, splitByLanguage, callback
+                                )
+                                runOnUiThread { result.success(splitResult) }
+                            } catch (e: Exception) {
+                                android.util.Log.e("DroidAnalyst", "Split error: ${e.message}", e)
+                                runOnUiThread { result.error("SPLIT_ERROR", e.message, null) }
+                            }
+                        }.start()
+                    } else {
+                        result.error("INVALID_ARGUMENT", "inputPath and outputDir are required", null)
+                    }
+                }
+                "getSplitApkInfo" -> {
+                    val path = call.argument<String>("path")
+                    val splitType = call.argument<String>("splitType") ?: "apks"
+                    
+                    if (path != null) {
+                        Thread {
+                            try {
+                                val info = antiSplitService.getSplitApkInfo(path, splitType)
+                                runOnUiThread { result.success(info) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("INFO_ERROR", e.message, null) }
+                            }
+                        }.start()
+                    } else {
+                        result.error("INVALID_ARGUMENT", "path is required", null)
+                    }
+                }
+                "extractSplitApk" -> {
+                    val inputPath = call.argument<String>("inputPath")
+                    val outputDir = call.argument<String>("outputDir")
+                    
+                    if (inputPath != null && outputDir != null) {
+                        Thread {
+                            try {
+                                val success = antiSplitService.extractSplitApk(inputPath, outputDir)
+                                runOnUiThread { result.success(success) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("EXTRACT_ERROR", e.message, null) }
+                            }
+                        }.start()
+                    } else {
+                        result.error("INVALID_ARGUMENT", "inputPath and outputDir are required", null)
+                    }
+                }
+                "createApksBundle" -> {
+                    val inputDir = call.argument<String>("inputDir")
+                    val outputPath = call.argument<String>("outputPath")
+                    
+                    if (inputDir != null && outputPath != null) {
+                        Thread {
+                            try {
+                                val success = antiSplitService.createApksBundle(inputDir, outputPath)
+                                runOnUiThread { result.success(success) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("BUNDLE_ERROR", e.message, null) }
+                            }
+                        }.start()
+                    } else {
+                        result.error("INVALID_ARGUMENT", "inputDir and outputPath are required", null)
+                    }
+                }
+                "installSplitApk" -> {
+                    val path = call.argument<String>("path")
+                    
+                    if (path != null) {
+                        Thread {
+                            try {
+                                val success = antiSplitService.installSplitApk(path)
+                                runOnUiThread { result.success(success) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("INSTALL_ERROR", e.message, null) }
+                            }
+                        }.start()
+                    } else {
+                        result.error("INVALID_ARGUMENT", "path is required", null)
                     }
                 }
                 else -> {

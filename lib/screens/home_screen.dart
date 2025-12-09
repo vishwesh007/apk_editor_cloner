@@ -8,6 +8,7 @@ import 'reports_screen.dart';
 import 'installed_apps_screen.dart';
 import 'termux_screen.dart';
 import 'apk_repacker_screen.dart';
+import 'antisplit_screen.dart';
 import '../widgets/status_bar.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -41,6 +42,11 @@ class _HomeScreenState extends State<HomeScreen> {
           icon: Icons.build,
           label: 'Repacker',
           screen: const ApkRepackerScreen(),
+        ),
+        NavigationItem(
+          icon: Icons.call_split,
+          label: 'AntiSplit',
+          screen: const AntiSplitScreen(),
         ),
         NavigationItem(
           icon: Icons.bug_report,
