@@ -29,10 +29,15 @@ class AndroidManifestParser {
   int minSdkVersion = 1;
   int targetSdkVersion = 1;
   List<String> permissions = [];
-  List<String> activities = [];
+  List<ActivityInfo> activities = [];
   List<String> services = [];
   List<String> receivers = [];
   List<String> providers = [];
+  bool debuggable = false;
+  String? backupAgent;
+  String? process;
+  List<UsesFeature> usesFeatures = [];
+  List<UsesLibrary> usesLibraries = [];
 
   /// Parse Android Binary XML
   ManifestInfo parse(List<int> bytes) {
@@ -88,6 +93,11 @@ class AndroidManifestParser {
       services: services,
       receivers: receivers,
       providers: providers,
+      debuggable: debuggable,
+      backupAgent: backupAgent,
+      process: process,
+      usesFeatures: usesFeatures,
+      usesLibraries: usesLibraries,
     );
   }
 
@@ -325,10 +335,15 @@ class ManifestInfo {
   final int minSdkVersion;
   final int targetSdkVersion;
   final List<String> permissions;
-  final List<String> activities;
+  final List<ActivityInfo> activities;
   final List<String> services;
   final List<String> receivers;
   final List<String> providers;
+  final bool debuggable;
+  final String? backupAgent;
+  final String? process;
+  final List<UsesFeature> usesFeatures;
+  final List<UsesLibrary> usesLibraries;
 
   ManifestInfo({
     required this.packageName,
@@ -342,5 +357,107 @@ class ManifestInfo {
     required this.services,
     required this.receivers,
     required this.providers,
+    this.debuggable = false,
+    this.backupAgent,
+    this.process,
+    this.usesFeatures = const [],
+    this.usesLibraries = const [],
+  });
+
+  // Create a copy with modifications
+  ManifestInfo copyWith({
+    String? packageName,
+    String? appName,
+    String? versionName,
+    int? versionCode,
+    int? minSdkVersion,
+    int? targetSdkVersion,
+    List<String>? permissions,
+    List<ActivityInfo>? activities,
+    List<String>? services,
+    List<String>? receivers,
+    List<String>? providers,
+    bool? debuggable,
+    String? backupAgent,
+    String? process,
+    List<UsesFeature>? usesFeatures,
+    List<UsesLibrary>? usesLibraries,
+  }) {
+    return ManifestInfo(
+      packageName: packageName ?? this.packageName,
+      appName: appName ?? this.appName,
+      versionName: versionName ?? this.versionName,
+      versionCode: versionCode ?? this.versionCode,
+      minSdkVersion: minSdkVersion ?? this.minSdkVersion,
+      targetSdkVersion: targetSdkVersion ?? this.targetSdkVersion,
+      permissions: permissions ?? this.permissions,
+      activities: activities ?? this.activities,
+      services: services ?? this.services,
+      receivers: receivers ?? this.receivers,
+      providers: providers ?? this.providers,
+      debuggable: debuggable ?? this.debuggable,
+      backupAgent: backupAgent ?? this.backupAgent,
+      process: process ?? this.process,
+      usesFeatures: usesFeatures ?? this.usesFeatures,
+      usesLibraries: usesLibraries ?? this.usesLibraries,
+    );
+  }
+}
+
+/// Activity information with intent filters
+class ActivityInfo {
+  final String name;
+  final bool exported;
+  final bool enabled;
+  final String? launchMode;
+  final String? screenOrientation;
+  final List<IntentFilter> intentFilters;
+
+  ActivityInfo({
+    required this.name,
+    this.exported = false,
+    this.enabled = true,
+    this.launchMode,
+    this.screenOrientation,
+    this.intentFilters = const [],
+  });
+}
+
+/// Intent filter information
+class IntentFilter {
+  final List<String> actions;
+  final List<String> categories;
+  final List<String> dataSchemes;
+  final List<String> dataTypes;
+
+  IntentFilter({
+    this.actions = const [],
+    this.categories = const [],
+    this.dataSchemes = const [],
+    this.dataTypes = const [],
+  });
+}
+
+/// Uses-feature information
+class UsesFeature {
+  final String name;
+  final bool required;
+  final int? glEsVersion;
+
+  UsesFeature({
+    required this.name,
+    this.required = false,
+    this.glEsVersion,
+  });
+}
+
+/// Uses-library information
+class UsesLibrary {
+  final String name;
+  final bool required;
+
+  UsesLibrary({
+    required this.name,
+    this.required = false,
   });
 }

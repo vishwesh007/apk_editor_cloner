@@ -220,8 +220,9 @@ class ApkToolService(private val context: Context) {
     }
     
     /**
-     * Main build method - exact implementation from ApkRepacker
+     * Main build method - exact implementation from ApkRepacker's Androlib.build()
      * Orchestrates smali compilation, resource building, APK packaging
+     * Reads metadata from apktool.json for proper configuration
      */
     fun buildApk(
         sourceDir: String,
@@ -241,6 +242,32 @@ class ApkToolService(private val context: Context) {
                 return false
             }
             
+            // Read metadata from apktool.json (ApkRepacker's MetaInfo)
+            val metaFile = File(srcDir, "apktool.json")
+            var doNotCompress = listOf(".so", ".arsc")
+            var compressionType = false
+            
+            if (metaFile.exists()) {
+                try {
+                    val meta = JSONObject(metaFile.readText())
+                    
+                    // Read doNotCompress list
+                    if (meta.has("doNotCompress")) {
+                        val dnc = meta.getJSONArray("doNotCompress")
+                        doNotCompress = (0 until dnc.length()).map { dnc.getString(it) }
+                    }
+                    
+                    // Read compression type
+                    if (meta.has("compressionType")) {
+                        compressionType = meta.getBoolean("compressionType")
+                    }
+                    
+                    Log.i(TAG, "Loaded build metadata: doNotCompress=$doNotCompress")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not parse apktool.json: ${e.message}")
+                }
+            }
+            
             outFile.parentFile?.mkdirs()
             
             // Create temp unsigned APK
@@ -249,12 +276,19 @@ class ApkToolService(private val context: Context) {
             ZipOutputStream(BufferedOutputStream(FileOutputStream(tempApk))).use { zipOut ->
                 
                 // Step 1: Build smali directories to DEX (exact flow from Androlib)
-                callback?.onProgress("Building smali to DEX...", 10)
+                callback?.onProgress("Building smali to DEX...", 5)
                 val smaliDirs = srcDir.listFiles { f ->
                     f.isDirectory && (f.name == SMALI_DIRNAME || f.name.startsWith("${SMALI_DIRNAME}_"))
                 } ?: emptyArray()
                 
-                var progress = 10
+                if (smaliDirs.isEmpty()) {
+                    callback?.onError("No smali directories found in source")
+                    return false
+                }
+                
+                var progress = 5
+                val progressPerDex = 25 / smaliDirs.size.coerceAtLeast(1)
+                
                 smaliDirs.sortedBy { it.name }.forEach { smaliDir ->
                     val dexName = if (smaliDir.name == SMALI_DIRNAME) {
                         "classes.dex"
@@ -268,16 +302,24 @@ class ApkToolService(private val context: Context) {
                     if (buildSmaliToDex(smaliDir, dexFile)) {
                         addFileToZip(zipOut, dexFile, dexName, store = false)
                         dexFile.delete()
+                        Log.i(TAG, "Added $dexName to APK")
+                    } else {
+                        callback?.onError("Failed to build $dexName")
+                        return false
                     }
-                    progress += 20
+                    progress += progressPerDex
                 }
                 
                 // Step 2: Add manifest
                 callback?.onProgress("Adding manifest...", 35)
                 copyFileToZip(zipOut, File(srcDir, "AndroidManifest.xml"), "AndroidManifest.xml")
                 
-                // Step 3: Add resources.arsc
-                copyFileToZip(zipOut, File(srcDir, "resources.arsc"), "resources.arsc")
+                // Step 3: Add resources.arsc (should be STORED for some devices)
+                val resourcesArsc = File(srcDir, "resources.arsc")
+                if (resourcesArsc.exists()) {
+                    val shouldStore = doNotCompress.any { it == ".arsc" || it == "resources.arsc" }
+                    addFileToZip(zipOut, resourcesArsc, "resources.arsc", store = shouldStore)
+                }
                 
                 // Step 4: Add res folder
                 callback?.onProgress("Adding resources folder...", 45)
@@ -321,24 +363,14 @@ class ApkToolService(private val context: Context) {
     
     /**
      * Build smali files to DEX
-     * Exact implementation from DexEncoder.smali2Dex() and SmaliBuilder.build()
+     * Fixed implementation using Smali.assemble() public API
+     * Takes entire smali directory and outputs to a DEX file
      */
     private fun buildSmaliToDex(smaliDir: File, outputDex: File): Boolean {
         return try {
-            Log.i(TAG, "Building smali to DEX: ${smaliDir.name}")
+            Log.i(TAG, "Building smali to DEX: ${smaliDir.name} -> ${outputDex.name}")
             
-            // Smali options (from DexEncoder)
-            val options = SmaliOptions().apply {
-                jobs = Runtime.getRuntime().availableProcessors()
-                apiLevel = 21
-                verboseErrors = false
-                allowOdexOpcodes = false
-            }
-            
-            // Create DexBuilder (from SmaliBuilder.build() line 50-65)
-            val dexBuilder = DexBuilder(Opcodes.forApi(21))
-            
-            // Collect smali files
+            // Collect all smali files in directory
             val smaliFiles = smaliDir.walkTopDown()
                 .filter { it.isFile && it.extension == "smali" }
                 .toList()
@@ -348,47 +380,44 @@ class ApkToolService(private val context: Context) {
                 return false
             }
             
-            Log.i(TAG, "Found ${smaliFiles.size} smali files")
+            Log.i(TAG, "Found ${smaliFiles.size} smali files to assemble")
             
-            // Assemble each file using thread pool (DexEncoder.smali2Dex line 29-75)
-            val executor = Executors.newFixedThreadPool(options.jobs)
-            val tasks = mutableListOf<Future<*>>()
-            var hasErrors = false
-            
-            for (smaliFile in smaliFiles) {
-                tasks.add(executor.submit<Boolean> {
-                    try {
-                        Smali.assemble(options, smaliFile.parent!!, File(context.cacheDir, "${smaliFile.nameWithoutExtension}.dex").absolutePath)
-                        true
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error assembling ${smaliFile.name}: ${e.message}")
-                        false
-                    }
-                })
-            }
-            
-            // Wait for all tasks
-            for (task in tasks) {
+            // Read API level from apktool.yml if available
+            var apiLevel = 21
+            val apktoolYml = smaliDir.parentFile?.let { File(it, "apktool.yml") }
+            if (apktoolYml?.exists() == true) {
                 try {
-                    val result = task.get()
-                    if (result != true) {
-                        hasErrors = true
-                    }
+                    val content = apktoolYml.readText()
+                    val minSdkMatch = Regex("""minSdkVersion:\s*'?(\d+)'?""").find(content)
+                    minSdkMatch?.groupValues?.get(1)?.toIntOrNull()?.let { apiLevel = it }
+                    Log.i(TAG, "Using API level from apktool.yml: $apiLevel")
                 } catch (e: Exception) {
-                    hasErrors = true
+                    Log.w(TAG, "Could not read API level from apktool.yml: ${e.message}")
                 }
             }
             
-            executor.shutdown()
-            executor.awaitTermination(5, TimeUnit.MINUTES)
+            // Ensure output directory exists
+            outputDex.parentFile?.mkdirs()
             
-            return if (!hasErrors) {
-                // Write DEX file (SmaliBuilder.build() line 61)
-                dexBuilder.writeTo(FileDataStore(outputDex))
-                Log.i(TAG, "Built DEX: ${outputDex.length()} bytes")
+            // Configure SmaliOptions (using Smali.assemble() public API)
+            val options = SmaliOptions().apply {
+                jobs = Runtime.getRuntime().availableProcessors().coerceAtMost(6)
+                this.apiLevel = apiLevel
+                verboseErrors = true
+                allowOdexOpcodes = false
+                outputDexFile = outputDex.absolutePath
+            }
+            
+            // Use the public Smali.assemble() API with the smali directory
+            // This handles all the internal DexBuilder logic
+            val success = Smali.assemble(options, smaliDir.absolutePath)
+            
+            if (success && outputDex.exists()) {
+                val dexSize = outputDex.length()
+                Log.i(TAG, "Built DEX successfully: ${outputDex.name} (${dexSize} bytes, ${smaliFiles.size} classes)")
                 true
             } else {
-                Log.e(TAG, "Errors occurred during smali assembly")
+                Log.e(TAG, "Smali assembly failed or output not created")
                 false
             }
             
@@ -459,27 +488,119 @@ class ApkToolService(private val context: Context) {
         }
     }
     
+    /**
+     * Create apktool.json metadata file (matches ApkRepacker's MetaInfo format)
+     * This file stores important build information needed for recompilation
+     */
     private fun createApktoolMetadata(outDir: File, apkFile: File, dexCount: Int) {
         try {
-            val content = """
+            // Extract manifest info from the decompiled manifest
+            val manifestFile = File(outDir, "AndroidManifest.xml")
+            var packageName = "unknown"
+            var versionCode = "1"
+            var versionName = "1.0"
+            var minSdkVersion = "21"
+            var targetSdkVersion = "34"
+            val doNotCompress = mutableListOf(".so", ".arsc")
+            
+            if (manifestFile.exists()) {
+                try {
+                    val content = manifestFile.readText()
+                    
+                    // Extract package name
+                    Regex("""package="([^"]+)"""").find(content)?.let {
+                        packageName = it.groupValues[1]
+                    }
+                    
+                    // Extract version info
+                    Regex("""android:versionCode="([^"]+)"""").find(content)?.let {
+                        versionCode = it.groupValues[1]
+                    }
+                    Regex("""android:versionName="([^"]+)"""").find(content)?.let {
+                        versionName = it.groupValues[1]
+                    }
+                    
+                    // Extract SDK info
+                    Regex("""android:minSdkVersion="([^"]+)"""").find(content)?.let {
+                        minSdkVersion = it.groupValues[1]
+                    }
+                    Regex("""android:targetSdkVersion="([^"]+)"""").find(content)?.let {
+                        targetSdkVersion = it.groupValues[1]
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not parse manifest for metadata: ${e.message}")
+                }
+            }
+            
+            // Check for native libs to add to doNotCompress
+            val libDir = File(outDir, "lib")
+            if (libDir.exists()) {
+                libDir.walkTopDown()
+                    .filter { it.isFile && it.extension == "so" }
+                    .forEach { /* .so already in list */ }
+            }
+            
+            // Create JSON format (matching ApkRepacker's MetaInfo)
+            val metaJson = JSONObject().apply {
+                put("version", VERSION)
+                put("apkFileName", apkFile.name)
+                put("apkFilePackageName", packageName)
+                put("apkFilePatch", apkFile.absolutePath)
+                put("isFrameworkApk", false)
+                put("compressionType", false)
+                put("sharedLibrary", false)
+                put("sparseResources", false)
+                
+                // SDK Info
+                put("sdkInfo", JSONObject().apply {
+                    put("minSdkVersion", minSdkVersion)
+                    put("targetSdkVersion", targetSdkVersion)
+                })
+                
+                // Version Info  
+                put("VersionInfo", JSONObject().apply {
+                    put("versionCode", versionCode)
+                    put("versionName", versionName)
+                })
+                
+                // Package Info
+                put("PackageInfo", JSONObject().apply {
+                    put("forcedPackageId", "127") // Default package ID
+                    put("renameManifestPackage", JSONObject.NULL)
+                })
+                
+                // Do not compress list
+                put("doNotCompress", JSONArray(doNotCompress))
+                
+                // Unknown files (empty by default)
+                put("unknownFiles", JSONObject())
+            }
+            
+            // Write JSON file (APKRepacker uses apktool.json)
+            File(outDir, "apktool.json").writeText(metaJson.toString(2))
+            
+            // Also create YAML for backward compatibility
+            val yamlContent = """
                 !!brut.androlib.meta.MetaInfo
                 apkFileName: ${apkFile.name}
                 doNotCompress:
-                - .so
-                - .arsc
+                ${doNotCompress.joinToString("\n") { "- $it" }}
                 isFrameworkApk: false
                 sdkInfo:
-                  minSdkVersion: '21'
-                  targetSdkVersion: '34'
+                  minSdkVersion: '$minSdkVersion'
+                  targetSdkVersion: '$targetSdkVersion'
                 sharedLibrary: false
                 sparseResources: false
                 version: '$VERSION'
                 versionInfo:
-                  versionCode: '1'
-                  versionName: '1.0'
+                  versionCode: '$versionCode'
+                  versionName: '$versionName'
             """.trimIndent()
             
-            File(outDir, "apktool.yml").writeText(content)
+            File(outDir, "apktool.yml").writeText(yamlContent)
+            
+            Log.i(TAG, "Created metadata: package=$packageName, version=$versionName ($versionCode), minSdk=$minSdkVersion")
+            
         } catch (e: Exception) {
             Log.w(TAG, "Failed to create metadata: ${e.message}")
         }

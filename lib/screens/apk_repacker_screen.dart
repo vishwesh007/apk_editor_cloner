@@ -1,7 +1,10 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../services/apk_tool_service.dart';
+import '../services/manifest_service.dart';
+import '../services/decompiled_manifest_parser.dart';
 
 class ApkRepackerScreen extends StatefulWidget {
   const ApkRepackerScreen({super.key});
@@ -14,6 +17,7 @@ class _ApkRepackerScreenState extends State<ApkRepackerScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final ApkToolService _apkToolService = ApkToolService();
+  final ManifestService _manifestService = ManifestService();
 
   // APK Info
   String? _selectedApkPath;
@@ -52,27 +56,38 @@ class _ApkRepackerScreenState extends State<ApkRepackerScreen>
   final TextEditingController _codeController = TextEditingController();
   final ScrollController _editorScrollController = ScrollController();
 
+  // Manifest editor state
+  DecompiledManifestInfo? _manifestInfo;
+  bool _isLoadingManifest = false;
+  String? _manifestError;
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     
     // Listen to progress updates
     _apkToolService.progressStream.listen((update) {
-      setState(() {
-        _statusMessage = update.message;
-        _progress = update.progress / 100.0;
-      });
+      if (mounted) {
+        setState(() {
+          _statusMessage = update.message;
+          _progress = update.progress / 100.0;
+        });
+      }
     });
     
     _apkToolService.errorStream.listen((error) {
-      _showError(error);
+      if (mounted) {
+        _showError(error);
+      }
     });
     
     _apkToolService.completeStream.listen((outputPath) {
-      setState(() {
-        _statusMessage = 'Complete: $outputPath';
-      });
+      if (mounted) {
+        setState(() {
+          _statusMessage = 'Complete: $outputPath';
+        });
+      }
     });
   }
 
@@ -85,6 +100,58 @@ class _ApkRepackerScreenState extends State<ApkRepackerScreen>
     _editorScrollController.dispose();
     _stringSearchController.dispose();
     super.dispose();
+  }
+
+  /// Request storage permissions required for Android 11+
+  Future<bool> _requestStoragePermission() async {
+    if (Platform.isAndroid) {
+      // For Android 11+ (SDK 30+), need MANAGE_EXTERNAL_STORAGE
+      if (await Permission.manageExternalStorage.isGranted) {
+        return true;
+      }
+      
+      // Try requesting storage permission first
+      final status = await Permission.storage.request();
+      if (status.isGranted) {
+        return true;
+      }
+      
+      // If not granted, request MANAGE_EXTERNAL_STORAGE
+      final manageStatus = await Permission.manageExternalStorage.request();
+      if (manageStatus.isGranted) {
+        return true;
+      }
+      
+      // Show a dialog explaining why we need the permission
+      if (mounted) {
+        final shouldOpenSettings = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Storage Permission Required'),
+            content: const Text(
+              'This app needs "All Files Access" permission to read and modify APK files.\n\n'
+              'Please enable "Allow access to manage all files" in the app settings.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('Open Settings'),
+              ),
+            ],
+          ),
+        );
+        
+        if (shouldOpenSettings == true) {
+          await openAppSettings();
+        }
+      }
+      return false;
+    }
+    return true;
   }
 
   Future<void> _selectApk() async {
@@ -171,6 +238,13 @@ class _ApkRepackerScreenState extends State<ApkRepackerScreen>
   Future<void> _decompileApk() async {
     if (_selectedApkPath == null) {
       _showError('Please select an APK first');
+      return;
+    }
+
+    // Request storage permission before decompiling
+    final hasPermission = await _requestStoragePermission();
+    if (!hasPermission) {
+      _showError('Storage permission required to read APK files');
       return;
     }
 
@@ -576,6 +650,7 @@ class _ApkRepackerScreenState extends State<ApkRepackerScreen>
   }
 
   void _showError(String message) {
+    if (!mounted) return;
     setState(() {
       _statusMessage = message;
     });
@@ -599,6 +674,7 @@ class _ApkRepackerScreenState extends State<ApkRepackerScreen>
             Tab(icon: Icon(Icons.edit), text: 'Edit'),
             Tab(icon: Icon(Icons.search), text: 'Search'),
             Tab(icon: Icon(Icons.text_fields), text: 'Strings'),
+            Tab(icon: Icon(Icons.description), text: 'Manifest'),
           ],
         ),
         actions: [
@@ -643,6 +719,7 @@ class _ApkRepackerScreenState extends State<ApkRepackerScreen>
                 _buildEditTab(),
                 _buildSearchTab(),
                 _buildStringsTab(),
+                _buildManifestTab(),
               ],
             ),
           ),
@@ -1381,5 +1458,688 @@ class _ApkRepackerScreenState extends State<ApkRepackerScreen>
       default:
         return Icons.insert_drive_file;
     }
+  }
+
+  // ============================================================================
+  // MANIFEST TAB
+  // ============================================================================
+
+  Future<void> _loadManifest() async {
+    if (_decompiledPath == null) return;
+
+    setState(() {
+      _isLoadingManifest = true;
+      _manifestError = null;
+    });
+
+    try {
+      final info = await _manifestService.getManifestInfo(_decompiledPath!);
+      setState(() {
+        _manifestInfo = info;
+        _manifestError = info == null ? 'Could not load manifest' : null;
+      });
+    } catch (e) {
+      setState(() {
+        _manifestError = 'Error loading manifest: $e';
+      });
+    } finally {
+      setState(() {
+        _isLoadingManifest = false;
+      });
+    }
+  }
+
+  Widget _buildManifestTab() {
+    if (_decompiledPath == null) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.description_outlined, size: 64, color: Colors.grey),
+            SizedBox(height: 16),
+            Text('Decompile an APK first to view its manifest'),
+          ],
+        ),
+      );
+    }
+
+    if (_manifestInfo == null && !_isLoadingManifest) {
+      _loadManifest();
+    }
+
+    if (_isLoadingManifest) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_manifestError != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 64, color: Colors.red),
+            const SizedBox(height: 16),
+            Text(_manifestError!, style: const TextStyle(color: Colors.red)),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _loadManifest,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final manifest = _manifestInfo!;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Quick Actions
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Quick Actions',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: () => _showCloneAppDialog(manifest),
+                        icon: const Icon(Icons.copy),
+                        label: const Text('Clone App'),
+                      ),
+                      if (manifest.debuggable)
+                        OutlinedButton.icon(
+                          onPressed: _removeDebuggable,
+                          icon: const Icon(Icons.bug_report_outlined),
+                          label: const Text('Remove Debuggable'),
+                        )
+                      else
+                        OutlinedButton.icon(
+                          onPressed: _makeDebuggable,
+                          icon: const Icon(Icons.bug_report),
+                          label: const Text('Make Debuggable'),
+                        ),
+                      OutlinedButton.icon(
+                        onPressed: () => _showEditVersionDialog(manifest),
+                        icon: const Icon(Icons.edit),
+                        label: const Text('Edit Version'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () => _showAddPermissionDialog(),
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add Permission'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Basic Info Card
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Package Info',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildInfoRow('Package', manifest.packageName),
+                  _buildInfoRow('Version Name', manifest.versionName ?? 'N/A'),
+                  _buildInfoRow('Version Code', manifest.versionCode?.toString() ?? 'N/A'),
+                  _buildInfoRow('Min SDK', manifest.minSdkVersion.toString()),
+                  _buildInfoRow('Target SDK', manifest.targetSdkVersion.toString()),
+                  if (manifest.debuggable)
+                    _buildInfoRow('Debuggable', 'Yes', valueColor: Colors.orange),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Permissions Card
+          Card(
+            child: ExpansionTile(
+              title: Text('Permissions (${manifest.permissions.length})'),
+              leading: const Icon(Icons.security),
+              children: [
+                if (manifest.permissions.isEmpty)
+                  const ListTile(title: Text('No permissions'))
+                else
+                  ...manifest.permissions.map((perm) => ListTile(
+                        leading: Icon(
+                          perm.isDangerous
+                              ? Icons.warning
+                              : Icons.check_circle,
+                          color: perm.isDangerous
+                              ? Colors.orange
+                              : Colors.green,
+                          size: 20,
+                        ),
+                        title: Text(
+                          perm.shortName,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                        subtitle: Text(
+                          perm.name,
+                          style: const TextStyle(fontSize: 11, color: Colors.grey),
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline, size: 20),
+                          onPressed: () => _removePermission(perm.name),
+                        ),
+                        dense: true,
+                      )),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // Activities Card
+          Card(
+            child: ExpansionTile(
+              title: Text('Activities (${manifest.activities.length})'),
+              leading: const Icon(Icons.window),
+              children: [
+                if (manifest.activities.isEmpty)
+                  const ListTile(title: Text('No activities'))
+                else
+                  ...manifest.activities.map((activity) => ListTile(
+                        leading: Icon(
+                          activity.isLauncher
+                              ? Icons.home
+                              : Icons.window_outlined,
+                          color: activity.isLauncher
+                              ? Colors.blue
+                              : null,
+                          size: 20,
+                        ),
+                        title: Text(
+                          activity.shortName,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              activity.name,
+                              style: const TextStyle(fontSize: 11, color: Colors.grey),
+                            ),
+                            if (activity.exported == true)
+                              const Text(
+                                'exported',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.orange,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                          ],
+                        ),
+                        dense: true,
+                      )),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // Services Card
+          Card(
+            child: ExpansionTile(
+              title: Text('Services (${manifest.services.length})'),
+              leading: const Icon(Icons.miscellaneous_services),
+              children: [
+                if (manifest.services.isEmpty)
+                  const ListTile(title: Text('No services'))
+                else
+                  ...manifest.services.map((service) => ListTile(
+                        leading: const Icon(Icons.settings, size: 20),
+                        title: Text(
+                          service.shortName,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                        subtitle: Text(
+                          service.name,
+                          style: const TextStyle(fontSize: 11, color: Colors.grey),
+                        ),
+                        dense: true,
+                      )),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // Receivers Card
+          Card(
+            child: ExpansionTile(
+              title: Text('Receivers (${manifest.receivers.length})'),
+              leading: const Icon(Icons.radio),
+              children: [
+                if (manifest.receivers.isEmpty)
+                  const ListTile(title: Text('No receivers'))
+                else
+                  ...manifest.receivers.map((receiver) => ListTile(
+                        leading: const Icon(Icons.broadcast_on_personal, size: 20),
+                        title: Text(
+                          receiver.shortName,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                        subtitle: Text(
+                          receiver.name,
+                          style: const TextStyle(fontSize: 11, color: Colors.grey),
+                        ),
+                        dense: true,
+                      )),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // Providers Card
+          Card(
+            child: ExpansionTile(
+              title: Text('Providers (${manifest.providers.length})'),
+              leading: const Icon(Icons.storage),
+              children: [
+                if (manifest.providers.isEmpty)
+                  const ListTile(title: Text('No providers'))
+                else
+                  ...manifest.providers.map((provider) => ListTile(
+                        leading: const Icon(Icons.dns, size: 20),
+                        title: Text(
+                          provider.shortName,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              provider.name,
+                              style: const TextStyle(fontSize: 11, color: Colors.grey),
+                            ),
+                            Text(
+                              'authorities: ${provider.authorities}',
+                              style: const TextStyle(fontSize: 10, color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                        dense: true,
+                      )),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value, {Color? valueColor}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+                color: Colors.grey,
+              ),
+            ),
+          ),
+          Expanded(
+            child: SelectableText(
+              value,
+              style: TextStyle(
+                fontFamily: 'monospace',
+                color: valueColor,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showCloneAppDialog(DecompiledManifestInfo manifest) async {
+    final packageController = TextEditingController(
+      text: manifest.packageName + '.clone',
+    );
+    final versionNameController = TextEditingController(
+      text: manifest.versionName ?? '1.0',
+    );
+    final versionCodeController = TextEditingController(
+      text: ((manifest.versionCode ?? 1) + 1).toString(),
+    );
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.copy, color: Colors.deepPurple),
+            SizedBox(width: 8),
+            Text('Clone App'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'This will create a copy of the app with a new package name, '
+                'allowing both versions to be installed on the same device.',
+                style: TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: packageController,
+                decoration: const InputDecoration(
+                  labelText: 'New Package Name',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: versionNameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Version Name',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: versionCodeController,
+                      decoration: const InputDecoration(
+                        labelText: 'Version Code',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Clone'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && _decompiledPath != null) {
+      setState(() {
+        _statusMessage = 'Cloning app...';
+      });
+
+      final success = await _manifestService.cloneApp(
+        decompiledDir: _decompiledPath!,
+        newPackage: packageController.text.trim(),
+        newVersionName: versionNameController.text.trim(),
+        newVersionCode: int.tryParse(versionCodeController.text.trim()),
+      );
+
+      if (success) {
+        _showSuccess('App cloned successfully!');
+        await _loadManifest();
+      } else {
+        _showError('Failed to clone app');
+      }
+    }
+  }
+
+  Future<void> _showEditVersionDialog(DecompiledManifestInfo manifest) async {
+    final versionNameController = TextEditingController(
+      text: manifest.versionName ?? '',
+    );
+    final versionCodeController = TextEditingController(
+      text: manifest.versionCode?.toString() ?? '',
+    );
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit Version'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: versionNameController,
+              decoration: const InputDecoration(
+                labelText: 'Version Name',
+                border: OutlineInputBorder(),
+                hintText: '1.0.0',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: versionCodeController,
+              decoration: const InputDecoration(
+                labelText: 'Version Code',
+                border: OutlineInputBorder(),
+                hintText: '1',
+              ),
+              keyboardType: TextInputType.number,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && _decompiledPath != null) {
+      final success = await _manifestService.updateVersion(
+        decompiledDir: _decompiledPath!,
+        versionName: versionNameController.text.trim(),
+        versionCode: int.tryParse(versionCodeController.text.trim()),
+      );
+
+      if (success) {
+        _showSuccess('Version updated');
+        await _loadManifest();
+      } else {
+        _showError('Failed to update version');
+      }
+    }
+  }
+
+  Future<void> _showAddPermissionDialog() async {
+    final controller = TextEditingController();
+    
+    final commonPermissions = [
+      'android.permission.INTERNET',
+      'android.permission.ACCESS_NETWORK_STATE',
+      'android.permission.ACCESS_WIFI_STATE',
+      'android.permission.WRITE_EXTERNAL_STORAGE',
+      'android.permission.READ_EXTERNAL_STORAGE',
+      'android.permission.CAMERA',
+      'android.permission.RECORD_AUDIO',
+      'android.permission.ACCESS_FINE_LOCATION',
+      'android.permission.ACCESS_COARSE_LOCATION',
+      'android.permission.VIBRATE',
+      'android.permission.WAKE_LOCK',
+      'android.permission.RECEIVE_BOOT_COMPLETED',
+    ];
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add Permission'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: controller,
+                decoration: const InputDecoration(
+                  labelText: 'Permission Name',
+                  border: OutlineInputBorder(),
+                  hintText: 'android.permission.INTERNET',
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Common Permissions:',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 200,
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: commonPermissions.length,
+                  itemBuilder: (ctx, index) {
+                    final perm = commonPermissions[index];
+                    return ListTile(
+                      dense: true,
+                      title: Text(
+                        perm.replaceFirst('android.permission.', ''),
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      onTap: () => Navigator.pop(ctx, perm),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (controller.text.trim().isNotEmpty) {
+                Navigator.pop(ctx, controller.text.trim());
+              }
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && _decompiledPath != null) {
+      final success = await _manifestService.addPermission(_decompiledPath!, result);
+      if (success) {
+        _showSuccess('Permission added');
+        await _loadManifest();
+      } else {
+        _showError('Failed to add permission');
+      }
+    }
+  }
+
+  Future<void> _removePermission(String permission) async {
+    if (_decompiledPath == null) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove Permission'),
+        content: Text('Remove $permission?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      final success = await _manifestService.removePermission(_decompiledPath!, permission);
+      if (success) {
+        _showSuccess('Permission removed');
+        await _loadManifest();
+      } else {
+        _showError('Failed to remove permission');
+      }
+    }
+  }
+
+  Future<void> _makeDebuggable() async {
+    if (_decompiledPath == null) return;
+
+    final success = await _manifestService.makeDebuggable(_decompiledPath!);
+    if (success) {
+      _showSuccess('App is now debuggable');
+      await _loadManifest();
+    } else {
+      _showError('Failed to make app debuggable');
+    }
+  }
+
+  Future<void> _removeDebuggable() async {
+    if (_decompiledPath == null) return;
+
+    final success = await _manifestService.removeDebuggable(_decompiledPath!);
+    if (success) {
+      _showSuccess('Debuggable flag removed');
+      await _loadManifest();
+    } else {
+      _showError('Failed to remove debuggable flag');
+    }
+  }
+
+  void _showSuccess(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.green,
+      ),
+    );
   }
 }

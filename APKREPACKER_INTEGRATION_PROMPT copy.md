@@ -15,7 +15,7 @@ You must fork the APKRepacker tool from GitHub, analyze its functionality, integ
 
 1. **Fork the repository**: Find and fork the APKRepacker project from GitHub
 2. https://github.com/AbdurazaaqMohammed/AntiSplit-M
-3. 
+3. , strictly do not try to reduce complications as they are there on purpose please.
 4. 
 5. **Clone locally**: Clone both the original and your fork
 6. **Analyze architecture**:
