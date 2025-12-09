@@ -3,7 +3,7 @@ description: Android Malware Analysis Dashboard - A tool for security researcher
 
 publish_to: 'none'
 
-version: 2.2.0+6
+version: 2.2.1+7
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
