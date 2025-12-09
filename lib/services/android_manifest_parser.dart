@@ -270,7 +270,15 @@ class AndroidManifestParser {
         break;
       case 'activity':
         final name = attributes['name'] ?? '';
-        if (name.isNotEmpty) activities.add(name);
+        if (name.isNotEmpty) {
+          activities.add(ActivityInfo(
+            name: name,
+            exported: attributes['exported'] == 'true',
+            enabled: attributes['enabled'] != 'false',
+            launchMode: attributes['launchMode'],
+            screenOrientation: attributes['screenOrientation'],
+          ));
+        }
         break;
       case 'service':
         final name = attributes['name'] ?? '';

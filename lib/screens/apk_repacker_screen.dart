@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../services/apk_tool_service.dart';
 import '../services/manifest_service.dart';
@@ -367,13 +368,51 @@ class _ApkRepackerScreenState extends State<ApkRepackerScreen>
         setState(() {
           _statusMessage = 'APK signed successfully! Output: $signedPath';
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Signed APK: $signedPath'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 5),
-          ),
-        );
+        
+        // Prompt to install
+        if (mounted) {
+          final shouldInstall = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.green),
+                  SizedBox(width: 8),
+                  Text('APK Signed'),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('APK signed successfully!'),
+                  const SizedBox(height: 8),
+                  SelectableText(
+                    signedPath,
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('Would you like to install it?'),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Later'),
+                ),
+                ElevatedButton.icon(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  icon: const Icon(Icons.install_mobile),
+                  label: const Text('Install'),
+                ),
+              ],
+            ),
+          );
+          
+          if (shouldInstall == true) {
+            await _installApk(signedPath);
+          }
+        }
       } else {
         _showError('Signing failed');
       }
@@ -384,6 +423,17 @@ class _ApkRepackerScreenState extends State<ApkRepackerScreen>
         _isSigning = false;
         _progress = 0.0;
       });
+    }
+  }
+  
+  /// Install APK using system installer
+  Future<void> _installApk(String apkPath) async {
+    try {
+      const platform = MethodChannel('com.example.droid_analyst/android');
+      await platform.invokeMethod('installApk', {'apkPath': apkPath});
+      _showSuccess('Installation initiated');
+    } catch (e) {
+      _showError('Failed to install: $e');
     }
   }
 
@@ -1579,6 +1629,11 @@ class _ApkRepackerScreenState extends State<ApkRepackerScreen>
                         icon: const Icon(Icons.add),
                         label: const Text('Add Permission'),
                       ),
+                      OutlinedButton.icon(
+                        onPressed: () => _showRawManifestDialog(manifest),
+                        icon: const Icon(Icons.code),
+                        label: const Text('View XML'),
+                      ),
                     ],
                   ),
                 ],
@@ -2131,6 +2186,90 @@ class _ApkRepackerScreenState extends State<ApkRepackerScreen>
     } else {
       _showError('Failed to remove debuggable flag');
     }
+  }
+
+  /// Show the raw AndroidManifest.xml in a dialog
+  Future<void> _showRawManifestDialog(DecompiledManifestInfo manifest) async {
+    await showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        child: Container(
+          width: MediaQuery.of(ctx).size.width * 0.9,
+          height: MediaQuery.of(ctx).size.height * 0.85,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.code, color: Colors.deepPurple),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'AndroidManifest.xml',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const Divider(),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E1E1E),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: SelectableText(
+                      manifest.rawXml ?? 'No raw XML available',
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                        color: Color(0xFFD4D4D4),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      if (manifest.rawXml != null) {
+                        Clipboard.setData(ClipboardData(text: manifest.rawXml!));
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          const SnackBar(
+                            content: Text('XML copied to clipboard'),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.copy),
+                    label: const Text('Copy'),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Close'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _showSuccess(String message) {

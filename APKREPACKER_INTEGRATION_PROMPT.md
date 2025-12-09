@@ -13,12 +13,14 @@ You must fork the APKRepacker tool from GitHub, analyze its functionality, integ
 
 ## STEP 1: FORK AND ANALYZE APKREPACKER
 
-1. **Fork the repository**: Find and fork the APKRepacker project from GitHub
-2. https://github.com/AbdurazaaqMohammed/AntiSplit-M
-3. 
+1. **Fork the repository**: Find and fork the APKRepacker project from GitHub, perform one by one
+2. ()https://github.com/MrIkso/ApkRepacker , strictly do not try to reduce complications as they are there on purpose please. android manifest is still not opening as in app)
+3. https://github.com/termux/termux-app, (i want it everything to work within app)strictly implement within app
 4. 
-5. **Clone locally**: Clone both the original and your fork
-6. **Analyze architecture**:
+5. https://github.com/AbdurazaaqMohammed/AntiSplit-M(create seperate space  for this as well in the app)
+6. 
+7. **Clone locally**: Clone both the original and your fork
+8. **Analyze architecture**:
    - Study the codebase structure
    - android_manfest handling of decompiling and rebuilding i meant that
    - Understand all repacker features and capabilities
@@ -26,8 +28,8 @@ You must fork the APKRepacker tool from GitHub, analyze its functionality, integ
    - Identify core algorithms and processing logic
    - Map out dependencies and requirements
    - 
-7. **Create feature inventory**: List every single feature the repacker supports
-8. **Test original tool**: Run the original APKRepacker on sample APKs to understand expected behavior
+9. **Create feature inventory**: List every single feature the repacker supports
+10. **Test original tool**: Run the original APKRepacker on sample APKs to understand expected behavior
 
 ## STEP 2: ANALYZE CURRENT FLUTTER APP
 
@@ -291,7 +293,7 @@ From the forked APKRepacker repository (https://github.com/MrIkso/ApkRepacker), 
 - Test component changes (e.g., removed activities don't appear)
 - Check permission changes take effect
 - Validate package name changes work
-- Always test on real device if its available, or an emulator
+- Always test on real device if its available,
 
 ### 7.6: Expand to ALL APKRepacker Features
 

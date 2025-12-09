@@ -55,7 +55,7 @@ class ApkAnalyzerService {
             minSdkVersion = manifestInfo.minSdkVersion;
             targetSdkVersion = manifestInfo.targetSdkVersion;
             permissions = manifestInfo.permissions;
-            activities = manifestInfo.activities;
+            activities = manifestInfo.activities.map((a) => a.name).toList();
             services = manifestInfo.services;
             receivers = manifestInfo.receivers;
             providers = manifestInfo.providers;
