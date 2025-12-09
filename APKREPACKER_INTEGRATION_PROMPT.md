@@ -549,6 +549,9 @@ Ill be providing suggestions in a suggestions.md ,so keep an eye on modification
 
 From the forked APKRepacker repository (https://github.com/MrIkso/ApkRepacker), thoroughly analyze and document ALL Manifest-related features:
 
+
+i Would like you to integrate the mentioned tools aggressively over rebuilding from scratch
+
 **Parsing Features:**
 
 - Full SAX-based parsing of AndroidManifest.xml
@@ -590,7 +593,7 @@ From the forked APKRepacker repository (https://github.com/MrIkso/ApkRepacker), 
    - `ManifestData`: Equivalent to Java ManifestData class
      - Fields for package, version, activities, services, permissions, etc.
      - Methods for adding/removing components
-   - `AndroidManifestParser`: SAX-equivalent parser using Dart's XML events
+   - `AndroidManifestParser`:  parser using Dart's XML events or kotlin
      - Parse method taking File or String input
      - Extract all manifest data into ManifestData object
    - `AndroidManifestPatcher`: For editing operations
