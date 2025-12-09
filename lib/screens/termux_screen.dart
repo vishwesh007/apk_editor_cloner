@@ -187,6 +187,21 @@ frida -U -f \$PACKAGE -l /tmp/ssl_bypass.js --no-pause
     _tabController = TabController(length: 3, vsync: this);
     _checkTermuxInstallation();
     _addOutput('Termux Console initialized');
+    // Listen to streamed output (local shell)
+    _termuxService.outputStream.listen((line) {
+      setState(() {
+        _output.add('[${DateTime.now().toString().split('.').first}] $line');
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_outputController.hasClients) {
+          _outputController.animateTo(
+            _outputController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    });
   }
 
   @override
@@ -412,12 +427,30 @@ frida -U -f \$PACKAGE -l /tmp/ssl_bypass.js --no-pause
                 ),
               ),
               const SizedBox(width: 8),
-              ElevatedButton.icon(
-                onPressed: _isTermuxInstalled && !_isExecuting
-                    ? () => _runCommand(_commandController.text)
-                    : null,
-                icon: const Icon(Icons.send, size: 18),
-                label: const Text('Run'),
+              Row(
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: _isTermuxInstalled && !_isExecuting
+                        ? () => _runCommand(_commandController.text)
+                        : null,
+                    icon: const Icon(Icons.send, size: 18),
+                    label: const Text('Run'),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: !_isExecuting
+                        ? () async {
+                            setState(() => _isExecuting = true);
+                            _addOutput('> [local] ${_commandController.text}');
+                            final ok = await _termuxService.runLocalShell(_commandController.text);
+                            if (!ok) _addOutput('Local shell failed to start');
+                            setState(() => _isExecuting = false);
+                          }
+                        : null,
+                    icon: const Icon(Icons.computer, size: 18),
+                    label: const Text('Run Locally'),
+                  ),
+                ],
               ),
             ],
           ),

@@ -12,6 +12,7 @@ import android.net.LocalSocketAddress
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.common.EventChannel
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -56,6 +57,7 @@ class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.example.droid_analyst/android"
     private val LOCAL_GADGET_CHANNEL = "com.droidanalyst/local_gadget"
     private val TERMUX_CHANNEL = "com.droidanalyst/termux"
+    private val TERMUX_OUTPUT_CHANNEL = "com.droidanalyst/termux_output"
     private val ANTISPLIT_CHANNEL = "com.droidanalyst/antisplit"
     
     // For local socket connection to gadget
@@ -787,6 +789,197 @@ class MainActivity : FlutterActivity() {
                 else -> {
                     result.notImplemented()
                 }
+            }
+        }
+
+        // Termux/terminal integration channel
+        // Streaming output channel for local shell
+        var termuxOutputSink: EventChannel.EventSink? = null
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, TERMUX_OUTPUT_CHANNEL).setStreamHandler(object: EventChannel.StreamHandler {
+            override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                termuxOutputSink = events
+            }
+            override fun onCancel(arguments: Any?) {
+                termuxOutputSink = null
+            }
+        })
+
+        var currentShellProcess: Process? = null
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, TERMUX_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "checkTermuxInstallation" -> {
+                    try {
+                        val pm = applicationContext.packageManager
+                        val termuxInstalled = try {
+                            pm.getPackageInfo(TERMUX_PACKAGE, 0)
+                            true
+                        } catch (e: Exception) { false }
+                        val termuxApiInstalled = try {
+                            pm.getPackageInfo(TERMUX_API_PACKAGE, 0)
+                            true
+                        } catch (e: Exception) { false }
+                        result.success(mapOf("termux" to termuxInstalled, "termux_api" to termuxApiInstalled))
+                    } catch (e: Exception) {
+                        result.success(mapOf("termux" to false, "termux_api" to false))
+                    }
+                }
+                "openTermux" -> {
+                    try {
+                        val launchIntent = applicationContext.packageManager.getLaunchIntentForPackage(TERMUX_PACKAGE)
+                        if (launchIntent != null) {
+                            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            applicationContext.startActivity(launchIntent)
+                            result.success(true)
+                        } else {
+                            result.success(false)
+                        }
+                    } catch (e: Exception) {
+                        result.success(false)
+                    }
+                }
+                "runCommand" -> {
+                    val command = call.argument<String>("command")
+                    val background = call.argument<Boolean>("background") ?: false
+                    if (command == null) {
+                        result.error("INVALID_ARGUMENT", "command is required", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        val intent = Intent(TERMUX_RUN_COMMAND_SERVICE)
+                        intent.setPackage(TERMUX_PACKAGE)
+                        intent.putExtra("com.termux.RUN_COMMAND_EXTRA_COMMAND", command)
+                        intent.putExtra("com.termux.RUN_COMMAND_EXTRA_BACKGROUND", background)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        applicationContext.startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        // Fallback: try to execute via sh (limited)
+                        Thread {
+                            try {
+                                val proc = Runtime.getRuntime().exec(arrayOf("sh", "-c", command))
+                                val exit = proc.waitFor()
+                                result.success(exit == 0)
+                            } catch (ex: Exception) {
+                                runOnUiThread { result.success(false) }
+                            }
+                        }.start()
+                    }
+                }
+                "runTaskerCommand" -> {
+                    val command = call.argument<String>("command")
+                    val workingDirectory = call.argument<String>("workingDirectory")
+                    val sessionAction = call.argument<String>("sessionAction")
+                    if (command == null) {
+                        result.error("INVALID_ARGUMENT", "command is required", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        val intent = Intent(TERMUX_RUN_COMMAND_SERVICE)
+                        intent.setPackage(TERMUX_PACKAGE)
+                        intent.putExtra("com.termux.RUN_COMMAND_EXTRA_COMMAND", command)
+                        if (workingDirectory != null) {
+                            intent.putExtra("com.termux.RUN_COMMAND_EXTRA_WORKDIR", workingDirectory)
+                        }
+                        if (sessionAction != null) {
+                            intent.putExtra("com.termux.RUN_COMMAND_EXTRA_SESSION_ACTION", sessionAction)
+                        }
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        applicationContext.startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.success(false)
+                    }
+                }
+                "runScript" -> {
+                    val scriptPath = call.argument<String>("scriptPath")
+                    val args = call.argument<List<String>>("args") ?: emptyList()
+                    if (scriptPath == null) {
+                        result.error("INVALID_ARGUMENT", "scriptPath is required", null)
+                        return@setMethodCallHandler
+                    }
+                    val cmd = (listOf("bash", scriptPath) + args).joinToString(" ")
+                    try {
+                        val intent = Intent(TERMUX_RUN_COMMAND_SERVICE)
+                        intent.setPackage(TERMUX_PACKAGE)
+                        intent.putExtra("com.termux.RUN_COMMAND_EXTRA_COMMAND", cmd)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        applicationContext.startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.success(false)
+                    }
+                }
+                "runLocalShell" -> {
+                    val command = call.argument<String>("command")
+                    if (command.isNullOrBlank()) {
+                        result.error("INVALID_ARGUMENT", "command is required", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        Thread {
+                            try {
+                                val proc = Runtime.getRuntime().exec(arrayOf("sh", "-c", command))
+                                synchronized(this) { currentShellProcess = proc }
+                                val reader = BufferedReader(InputStreamReader(proc.inputStream))
+                                val errReader = BufferedReader(InputStreamReader(proc.errorStream))
+                                var line: String?
+                                while (reader.readLine().also { line = it } != null) {
+                                    termuxOutputSink?.success(line)
+                                }
+                                while (errReader.readLine().also { line = it } != null) {
+                                    termuxOutputSink?.success(line)
+                                }
+                                val code = proc.waitFor()
+                                termuxOutputSink?.success("[exit $code]")
+                                runOnUiThread { result.success(code == 0) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.success(false) }
+                            }
+                        }.start()
+                    } catch (e: Exception) {
+                        result.success(false)
+                    }
+                }
+                "stopLocalShell" -> {
+                    try {
+                        synchronized(this) {
+                            currentShellProcess?.destroy()
+                            currentShellProcess = null
+                        }
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.success(false)
+                    }
+                }
+                "getTermuxHomePath" -> {
+                    result.success("/data/data/com.termux/files/home")
+                }
+                "createScript" -> {
+                    val name = call.argument<String>("name")
+                    val content = call.argument<String>("content")
+                    if (name.isNullOrBlank() || content == null) {
+                        result.error("INVALID_ARGUMENT", "name and content are required", null)
+                        return@setMethodCallHandler
+                    }
+                    // Create script by echoing content via Termux
+                    val safeName = name.replace(Regex("[^A-Za-z0-9._-]"), "_")
+                    val cmd = "cat > ~/$safeName << 'EOF'\n${content}\nEOF\nchmod +x ~/$safeName"
+                    try {
+                        val intent = Intent(TERMUX_RUN_COMMAND_SERVICE)
+                        intent.setPackage(TERMUX_PACKAGE)
+                        intent.putExtra("com.termux.RUN_COMMAND_EXTRA_COMMAND", cmd)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        applicationContext.startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.success(false)
+                    }
+                }
+                "copyFileToTermux" -> {
+                    // Not implemented: requires file broker; advise using createScript/runCommand
+                    result.success(false)
+                }
+                else -> result.notImplemented()
             }
         }
     }

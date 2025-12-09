@@ -10,8 +10,10 @@ class TermuxService {
   TermuxService._internal();
 
   static const platform = MethodChannel('com.droidanalyst/termux');
+  static const _outputChannel = EventChannel('com.droidanalyst/termux_output');
   
   final _outputController = StreamController<String>.broadcast();
+  StreamSubscription? _outputSubscription;
   Stream<String> get outputStream => _outputController.stream;
   
   bool _isTermuxInstalled = false;
@@ -71,6 +73,47 @@ class TermuxService {
       return result == true;
     } catch (e) {
       debugPrint('Error running Termux command: $e');
+      return false;
+    }
+  }
+
+  void _ensureOutputListening() {
+    _outputSubscription ??= _outputChannel.receiveBroadcastStream().listen(
+      (event) {
+        if (event is String) {
+          _outputController.add(event);
+        } else {
+          _outputController.add(event?.toString() ?? '');
+        }
+      },
+      onError: (e) {
+        debugPrint('Termux output error: $e');
+      },
+    );
+  }
+
+  /// Run a local shell command and stream output via EventChannel
+  Future<bool> runLocalShell(String command) async {
+    if (kIsWeb) return false;
+    _ensureOutputListening();
+    try {
+      final result = await platform.invokeMethod('runLocalShell', {
+        'command': command,
+      });
+      return result == true;
+    } catch (e) {
+      debugPrint('Error running local shell: $e');
+      return false;
+    }
+  }
+
+  Future<bool> stopLocalShell() async {
+    if (kIsWeb) return false;
+    try {
+      final result = await platform.invokeMethod('stopLocalShell');
+      return result == true;
+    } catch (e) {
+      debugPrint('Error stopping local shell: $e');
       return false;
     }
   }
@@ -201,6 +244,7 @@ class TermuxService {
   }
   
   void dispose() {
+    _outputSubscription?.cancel();
     _outputController.close();
   }
 }
