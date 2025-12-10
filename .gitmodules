@@ -1,0 +1,3 @@
+[submodule "android/apktool-android"]
+	path = android/apktool-android
+	url = https://github.com/vishwesh007/Apktool-android
