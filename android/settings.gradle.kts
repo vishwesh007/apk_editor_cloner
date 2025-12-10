@@ -24,3 +24,5 @@ plugins {
 }
 
 include(":app")
+include(":apktool-android")
+project(":apktool-android").projectDir = file("apktool-android")
