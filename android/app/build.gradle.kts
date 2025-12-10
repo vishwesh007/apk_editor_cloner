@@ -68,9 +68,17 @@ dependencies {
     // D8/R8 for JAR to DEX conversion (runs apktool.jar, etc. on Android)
     implementation("com.android.tools:r8:8.5.35")
 
-    // Use Apktool-android's bundled jars as-is without modifying source
+    // Use Apktool-android's bundled jars for additional dependencies
     implementation(fileTree(mapOf(
         "dir" to "../apktool-android/apktool/libs",
-        "include" to listOf("*.jar")
+        "include" to listOf("*.jar"),
+        // Exclude jars that conflict with modern dependencies
+        "exclude" to listOf(
+            "annotations-*.jar",      // Conflicts with org.jetbrains:annotations
+            "guava-*.jar",            // Conflicts with smali's guava
+            "failureaccess-*.jar",
+            "jsr305-*.jar",
+            "apksigner.jar"           // We use com.android.tools.build:apksig instead
+        )
     )))
 }
