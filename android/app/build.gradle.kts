@@ -68,6 +68,9 @@ dependencies {
     // D8/R8 for JAR to DEX conversion (runs apktool.jar, etc. on Android)
     implementation("com.android.tools:r8:8.5.35")
 
-    // Link in Apktool-android submodule as-is
-    implementation(project(":apktool-android"))
+    // Use Apktool-android's bundled jars as-is without modifying source
+    implementation(fileTree(mapOf(
+        "dir" to "../apktool-android/apktool/libs",
+        "include" to listOf("*.jar")
+    )))
 }

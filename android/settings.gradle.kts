@@ -24,5 +24,4 @@ plugins {
 }
 
 include(":app")
-include(":apktool-android")
-project(":apktool-android").projectDir = file("apktool-android")
+// Apktool-android kept as submodule; we consume its jars directly
