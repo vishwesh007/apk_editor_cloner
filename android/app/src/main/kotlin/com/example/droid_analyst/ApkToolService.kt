@@ -203,19 +203,36 @@ class ApkToolService(private val context: Context) {
     }
     
     /**
-     * Decode binary XML to readable XML
+     * Decode binary XML to readable XML using AxmlDecoder
      */
     private fun decodeManifestFull(zipFile: ZipFile, outDir: File) {
         try {
             val entry = zipFile.getEntry("AndroidManifest.xml") ?: return
-            val file = File(outDir, "AndroidManifest.xml")
-            zipFile.getInputStream(entry).use { input ->
-                file.outputStream().use { output ->
-                    input.copyTo(output)
+            val outFile = File(outDir, "AndroidManifest.xml")
+            
+            // Read binary XML bytes
+            val bytes = zipFile.getInputStream(entry).use { it.readBytes() }
+            
+            // Check if it's binary XML and decode
+            if (com.example.droid_analyst.util.AxmlDecoder.isBinaryXml(bytes)) {
+                Log.i(TAG, "Decoding binary AndroidManifest.xml using AxmlDecoder")
+                val decodedXml = com.example.droid_analyst.util.AxmlDecoder.decode(bytes)
+                
+                if (decodedXml != null) {
+                    outFile.writeText(decodedXml)
+                    Log.i(TAG, "Successfully decoded AndroidManifest.xml to text XML")
+                } else {
+                    // Fallback: copy raw bytes
+                    Log.w(TAG, "AXML decode returned null, copying raw bytes")
+                    outFile.writeBytes(bytes)
                 }
+            } else {
+                // Already text XML, just copy
+                Log.i(TAG, "AndroidManifest.xml is already text XML, copying as-is")
+                outFile.writeBytes(bytes)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to decode manifest: ${e.message}")
+            Log.e(TAG, "Failed to decode manifest: ${e.message}", e)
         }
     }
     
@@ -310,9 +327,15 @@ class ApkToolService(private val context: Context) {
                     progress += progressPerDex
                 }
                 
-                // Step 2: Add manifest
-                callback?.onProgress("Adding manifest...", 35)
-                copyFileToZip(zipOut, File(srcDir, "AndroidManifest.xml"), "AndroidManifest.xml")
+                // Step 2: Add manifest (encode to binary AXML if needed)
+                callback?.onProgress("Encoding manifest...", 35)
+                val manifestFile = File(srcDir, "AndroidManifest.xml")
+                if (manifestFile.exists()) {
+                    addEncodedXmlToZip(zipOut, manifestFile, "AndroidManifest.xml")
+                } else {
+                    callback?.onError("AndroidManifest.xml not found")
+                    return false
+                }
                 
                 // Step 3: Add resources.arsc (should be STORED for some devices)
                 val resourcesArsc = File(srcDir, "resources.arsc")
@@ -321,9 +344,10 @@ class ApkToolService(private val context: Context) {
                     addFileToZip(zipOut, resourcesArsc, "resources.arsc", store = shouldStore)
                 }
                 
-                // Step 4: Add res folder
-                callback?.onProgress("Adding resources folder...", 45)
-                addDirectoryToZip(zipOut, File(srcDir, "res"), "res", store = false)
+                
+                // Step 4: Add res folder (encode XML files to binary AXML)
+                callback?.onProgress("Encoding resources...", 45)
+                addDirectoryToZip(zipOut, File(srcDir, "res"), "res", store = false, encodeXml = true)
                 
                 // Step 5: Add lib folder (must be STORED uncompressed)
                 callback?.onProgress("Adding native libraries...", 55)
@@ -463,8 +487,40 @@ class ApkToolService(private val context: Context) {
         }
     }
     
+    /**
+     * Extract and decode resource files from res/ folder.
+     * Binary XML files are decoded to readable text XML.
+     */
     private fun extractResourcesFolder(zipFile: ZipFile, outDir: File) {
-        extractFolder(zipFile, outDir, "res")
+        try {
+            zipFile.entries().asSequence()
+                .filter { it.name.startsWith("res/") && !it.isDirectory }
+                .forEach { entry ->
+                    val file = File(outDir, entry.name)
+                    file.parentFile?.mkdirs()
+                    
+                    val bytes = zipFile.getInputStream(entry).use { it.readBytes() }
+                    
+                    // Check if it's an XML file that needs decoding
+                    if (entry.name.endsWith(".xml") && 
+                        com.example.droid_analyst.util.AxmlDecoder.isBinaryXml(bytes)) {
+                        
+                        val decodedXml = com.example.droid_analyst.util.AxmlDecoder.decode(bytes)
+                        if (decodedXml != null) {
+                            file.writeText(decodedXml)
+                        } else {
+                            // Fallback: write raw bytes
+                            file.writeBytes(bytes)
+                        }
+                    } else {
+                        // Not binary XML, just copy
+                        file.writeBytes(bytes)
+                    }
+                }
+            Log.i(TAG, "Extracted and decoded res/ folder")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to extract res folder: ${e.message}", e)
+        }
     }
     
     private fun extractUnknownFiles(zipFile: ZipFile, outDir: File) {
@@ -642,7 +698,8 @@ class ApkToolService(private val context: Context) {
         zipOut: ZipOutputStream,
         dir: File,
         basePath: String,
-        store: Boolean = false
+        store: Boolean = false,
+        encodeXml: Boolean = false
     ) {
         if (!dir.exists() || !dir.isDirectory) return
         
@@ -651,9 +708,64 @@ class ApkToolService(private val context: Context) {
                 val relativePath = file.relativeTo(dir).path.replace('\\', '/')
                 val entryName = if (basePath.isEmpty()) relativePath else "$basePath/$relativePath"
                 val shouldStore = store || file.extension == "so"
-                addFileToZip(zipOut, file, entryName, shouldStore)
+                
+                // Encode XML files in res/ folder to binary AXML
+                if (encodeXml && file.extension == "xml") {
+                    addEncodedXmlToZip(zipOut, file, entryName)
+                } else {
+                    addFileToZip(zipOut, file, entryName, shouldStore)
+                }
             }
         }
+    }
+    
+    /**
+     * Add XML file to ZIP, encoding to binary AXML format if it's text XML.
+     * If already binary, just copy as-is.
+     */
+    private fun addEncodedXmlToZip(zipOut: ZipOutputStream, xmlFile: File, entryName: String) {
+        try {
+            val bytes = xmlFile.readBytes()
+            
+            // Check if already binary AXML
+            if (com.example.droid_analyst.util.AxmlEncoder.isBinaryXml(bytes)) {
+                // Already binary, just add it
+                Log.d(TAG, "XML $entryName is already binary, adding as-is")
+                addBytesToZip(zipOut, bytes, entryName)
+            } else if (com.example.droid_analyst.util.AxmlEncoder.isTextXml(bytes)) {
+                // Text XML, need to encode to binary
+                Log.i(TAG, "Encoding text XML to binary AXML: $entryName")
+                val encoded = com.example.droid_analyst.util.AxmlEncoder.encode(String(bytes, Charsets.UTF_8))
+                
+                if (encoded != null) {
+                    addBytesToZip(zipOut, encoded, entryName)
+                    Log.i(TAG, "Successfully encoded $entryName (${bytes.size} -> ${encoded.size} bytes)")
+                } else {
+                    // Encoding failed, add original (may cause issues)
+                    Log.w(TAG, "Failed to encode $entryName, adding as text (may cause parse errors)")
+                    addBytesToZip(zipOut, bytes, entryName)
+                }
+            } else {
+                // Unknown format, just add it
+                Log.d(TAG, "Unknown XML format for $entryName, adding as-is")
+                addBytesToZip(zipOut, bytes, entryName)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error processing XML $entryName: ${e.message}", e)
+            // Try to add original file
+            try {
+                addFileToZip(zipOut, xmlFile, entryName, false)
+            } catch (e2: Exception) {
+                Log.e(TAG, "Failed to add $entryName: ${e2.message}")
+            }
+        }
+    }
+    
+    private fun addBytesToZip(zipOut: ZipOutputStream, bytes: ByteArray, entryName: String) {
+        val entry = ZipEntry(entryName)
+        zipOut.putNextEntry(entry)
+        zipOut.write(bytes)
+        zipOut.closeEntry()
     }
     
     // Public utility methods
